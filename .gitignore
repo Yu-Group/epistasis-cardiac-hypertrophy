@@ -1,0 +1,14 @@
+manuscript/*
+
+*/__pycache__/*
+slurm*
+*.out
+*.DS_Store
+.Rproj.user
+*.Rhistory
+*.Rproj
+
+01_lo-siRF/data/*
+01_lo-siRF/results/*
+01_lo-siRF/rmd_archive/*
+01_lo-siRF/scripts_archive/*

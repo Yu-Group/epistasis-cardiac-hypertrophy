@@ -1,0 +1,2128 @@
+---
+title: "PCS documentation for low-signal signed iterative random forests (lo-siRF)"
+# author: "Tiffany M. Tang"
+date: "October 29, 2023"
+bibliography: bibliography.bib
+header-includes:
+    - \usepackage{float}
+    - \usepackage{amsmath}
+    - \usepackage{gensymb}
+output:
+  vthemes::vmodern:
+    number_sections: true
+params:
+  eval: false
+---
+
+
+```{r setup, include=FALSE}
+options(width = 10000)
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  cache = FALSE,
+  fig.align = "center",
+  fig.pos = "H",
+  # fig.show = "hold",
+  fig.height = 12,
+  fig.width = 10
+)
+
+library(knitr)
+library(fontawesome)
+library(tidyverse)
+library(data.table)
+library(plotly)
+library(kableExtra)
+library(patchwork)
+library(vthemes)
+library(vdocs)
+
+source(file.path("..", "functions", "plot-functions.R"), chdir = T)
+source(file.path("..", "functions", "load-functions.R"), chdir = T)
+source(file.path("..", "functions", "eval-functions.R"), chdir = T)
+
+options(
+  knitr.kable.NA = "NA",
+  dplyr.summarise.inform = FALSE
+)
+
+# scrollable text output
+local({
+  hook_output <- knitr::knit_hooks$get("output")
+  knitr::knit_hooks$set(output = function(x, options) {
+    if (!is.null(options$max.height)) {
+      options$attr.output <- c(
+        options$attr.output,
+        sprintf('style="max-height: %s;"', options$max.height)
+      )
+    }
+    hook_output(x, options)
+  })
+})
+
+display_image <- function(fname, chunk_idx, caption = "''") {
+  subchunkify(
+    g = knitr::include_graphics(fname), i = chunk_idx,
+    caption = caption,
+    add_class = c("panel panel-default"),
+    other_args = "out.width='100%'"
+  )
+  chunk_idx <<- chunk_idx + 1
+}
+
+subchunkify <- function(...) {
+  vthemes::subchunkify(...)
+  cat("\n\n")
+}
+
+chunk_idx <- 1
+data_dir <- file.path("..", "data")
+res_dir <- file.path("..", "results")
+tab_res_dir <- file.path(res_dir, "tables")
+fig_res_dir <- file.path(res_dir, "figures")
+phenotypes <- c("LVMi" = "iLVM")
+phenotypes_all <- c("LVMi" = "iLVM", "LVM" = "LVM")
+```
+
+```{css, echo=FALSE}
+.btn-toolbar {
+  display: none;
+}
+
+.figure p.caption {
+  font-size: 90%;
+  padding: 8px;
+}
+
+.figure {
+  display: inherit;
+}
+
+.th-group-header {
+  padding: 5px !important;
+  border: none !important;
+  text-align: center;
+}
+
+.th-group-header:after {
+  content: ""; /* This is necessary for the pseudo element to work. */ 
+  display: block; /* This will put the pseudo element on its own line. */
+  margin: 0 auto; /* This will center the border. */
+  width: 95%; /* Change this to whatever width you want. */
+  padding-top: 14px; /* This creates some space between the element and the border. */
+  border-bottom: 1px solid black; /* This creates the border. Replace black with whatever color you want. */
+}
+
+.th-group-subheader {
+  border-top: none !important;
+}
+
+.citation {
+  color: #009688;
+}
+
+.csl-entry {
+  margin-bottom: 0.5em;
+}
+```
+
+
+# Overview {.tabset .tabset-fade .tabset-vmodern}
+
+<div class="panel panel-default padded-panel">
+In [@wang2023epistasis](), we developed an end-to-end pipeline to demonstrate the role of epistasis in the genetic control of cardiac hypertrophy. 
+This pipeline consisted of four major phases: 
+(1) the derivation of estimates of left ventricular mass via deep learning,
+(2) the computational prioritization of epistatic drivers based on data from the UK Biobank [@bycroft2018uk], 
+(3) functional interpretation of the hypothesized epistatic genetic loci, and 
+(4) experimental confirmation of epistasis in cardiac transcriptome and cardiac cellular morphology.
+
+Here, we expand upon the computational prioritization of epistatic drivers phase. 
+In this phase, we leveraged large-scale genetic and cardiac MRI data from the UK Biobank and developed the low-signal signed iterative random forest (lo-siRF) to prioritize genetic loci and interactions between loci for downstream investigations. 
+As lo-siRF is heavily rooted in the Predictability, Computability, and Stability (PCS) framework for veridical (trustworthy) data science [@yu2020veridical], we conducted extensive stability analyses to help minimize the impact of human judgment calls and modeling decisions on our scientific conclusions. 
+In this supplementary PCS documentation, we will:
+
+1. Transparently document and justify the many human judgment calls and modeling decisions that were inevitably made throughout our statistical analysis.
+2. Provide additional exploration and insight into the main results presented in [@wang2023epistasis]() alongside the stability analyses.
+
+In what follows, we organize this documentation by step in the lo-siRF pipeline (see [@wang2023epistasis]()), beginning with the choice of phenotypic data, followed by the dimension reduction step, binarization step, prediction step, and concluding with the prioritization step.
+
+</div>
+
+
+# Choice of Phenotypic Data {.tabset .tabset-fade .tabset-vmodern}
+
+<div class="panel panel-default padded-panel">
+In the first step of lo-siRF, we began with a careful choice of phenotypic data. 
+This first, but often overlooked, choice is critical to the reliability and interpretation of results.
+If the data quality is poor, conclusions may be unreliable. 
+If the data is far-removed from the domain problem of interest, conclusions may not be relevant. 
+Given the importance of this choice of phenotypic data, we conducted extensive data explorations for different phenotypes in addition obtaining clinician input regarding its clinical relevance.
+
+**Initial choice of phenotype:** 
+Our overarching goal was to study the role of epistasis in cardiac hypertrophy. 
+One important disease that is closely related to cardiac hypertrophy is hypertrophic cardiomyopathy (HCM). 
+HCM is a common heart disease, impacting around 1 in 500 people, where the heart muscle becomes enlarged or thickened. 
+Given the high prevalence and possible life-threatening consequences of this disease, we first set out to explore this HCM phenotype, defined as a 0-1 indicator variable of whether or not the individual was diagnosed with HCM (i.e., any ICD10 code of I42.1 or I42.2 in the UK Biobank). 
+However, when fitting various machine learning prediction models, including L1 or L2-regularized logistic regression, random forest (RF), iterative RF (iRF), and support vector machines, using single-nucleotide variant (SNV) data from the UK Biobank (details in [@wang2023epistasis]()) to predict HCM diagnosis, the balanced classification accuracy on the held-out validation data did not consistently exceed 50\% when trained on different bootstrapped training samples. 
+In other words, the fitted prediction models were no better than random guessing. 
+This made us wary of any interpretations extracted from these prediction models since it is unclear whether these models are capturing any relevant phenotypic signal or simply noise. 
+Given this incredibly weak prediction signal, we deemed that these models did not pass the prediction check (the "P" in PCS) [@yu2020veridical]. 
+For this reason, we chose not to proceed further with the HCM phenotype and did not conduct any analysis with respect to interpreting the aforementioned models for HCM.
+
+**Pivoting to a cardiac MRI-derived phenotype:** 
+We instead pivoted to an alternative phenotype for cardiac hypertrophy based upon deep-learning-enabled left ventricular (LV) structural analysis using cardiac MRIs. 
+This choice was heavily motivated by our struggles with HCM. 
+Specifically, when looking back at the HCM diagnosis data, we noticed that the number of HCM cases in the UK Biobank data (only 236 HCM cases out of 337,535 unrelated White British individuals) was much lower than the 1 in 500 ratio that is expected. 
+Although the UK Biobank population is known to be healthier than the general population [@fry2017comparison], the observed discrepancy is large, leading us to speculate about potential under-diagnosis issues with the HCM phenotype. 
+Consequently, rather than relying on a clinician's diagnosis which may suffer from issues such as under-diagnosis, we chose to build upon recent advances in deep-learning-enabled phenotyping [@bai2018automated]. 
+Doing so enables us to extract a measure of left ventricular hypertrophy, specifically, the left ventricular mass (LVM), from anyone with a cardiac MRI. 
+
+**Arriving at LVMi:**
+However, LVM is known to be heavily influenced by body weight, height, and gender [@engel2016athletic; @mizukoshi2016normal]. 
+Thus, if we were to proceed solely with LVM in our analysis, we risk identifying genetic loci and interactions between loci that are primarily associated with body weight, height, and gender, rather than left ventricular hypertrophy. 
+Indeed, if we visualize the relationship between LVM, height, and weight within each gender group (Figure \@ref(fig:subchunk-1)), we see strong positive correlations. 
+
+This motivates the need to adjust for height and weight in order to help decouple the effects of height/weight and LVM. 
+As done in @khurshid2023clinical, one common way to address this is by analyzing LVM indexed by body surface area (LVMi), defined as:
+
+\begin{align*}
+\text{LVMi} = \text{LVM } / \text{ Body surface area},
+\end{align*}
+where body surface area is calculated based on height and body weight via the Du Bois formula [@du1916clinical].
+
+After normalizing by body surface area (and hence, height and weight), the associations between LVMi and height/weight are much weaker within each gender group, exhibiting correlations closer to 0 (Figure \@ref(fig:subchunk-1)). 
+Thus, by focusing our statistical analysis on LVMi, we lessen the possibility that the identified genetic loci and interactions between loci are only selected because of their association with body height and/or weight. 
+Still, there are differences in LVMi between males and females, with males tending to have higher LVMi measurements. 
+As seen later, we will account for this in the modeling stage by using gender-specific binarization thresholds to binarize the LVMi responses into the high and low LVMi groups. 
+
+**Study Cohort:** 
+Before proceeding, we note that another important human judgment call within our pipeline is the choice of study cohort. 
+Specifically, we restricted our analysis to the unrelated White British individual population with both SNV and cardiac MRI data in the UK Biobank, resulting in a cohort of 29,661 individuals. 
+We chose to focus this analysis on the unrelated White British population, anticipating the very low-signal problem under study (e.g., due to the generally small effect sizes of common genetic variants and the high phenotypic diversity of cardiac hypertrophy). 
+By studying a more homogeneous cohort such as the unrelated White British population, we hope to first establish a proof-of-concept foothold on the role of epistasis in cardiac hypertrophy, and we view the study and generalization to the broader population as a very crucial next step.
+</div>
+
+```{r lvm-eda, results = "asis"}
+
+if (params$eval) {
+  geno_ids <- readRDS(file.path(data_dir, "geno_ids.rds"))
+  pheno_data <- fread(
+    file.path(data_dir, "table_ventricular_volume_with_indexing.csv")
+  ) %>%
+    dplyr::filter(id %in% !!geno_ids) %>%
+    mutate(
+      Gender = ifelse(
+        loadDemographics(id)[, "gender"] == 1, 
+        "Male", 
+        "Female"
+      ) %>% 
+        as.factor()
+    ) %>%
+    as.data.frame() %>%
+    rename(
+      "LVMi (g/m^2)" = "iLVM (g/m2)",
+      "Weight (kg)" = "weight (kg)",
+      "Height (cm)" = "height (cm)"
+    ) %>%
+    dplyr::filter(!is.na(Gender))
+
+  keep_cols <- c("LVM (g)", "LVMi (g/m^2)", "Weight (kg)", "Height (cm)")
+  plt <- pheno_data %>%
+    dplyr::select(tidyselect::all_of(keep_cols), Gender) %>%
+    vdocs::plot_pairs(columns = keep_cols, color = .$Gender, point_size = 0.1)
+  saveRDS(plt, file.path(fig_res_dir, "phenotype_correlation_heatmap.rds"))
+  ggsave(plt,
+    filename = file.path(fig_res_dir, "phenotype_correlation_heatmap.png"),
+    width = 8, height = 6
+  )
+} else {
+  display_image(
+    file.path(fig_res_dir, "phenotype_correlation_heatmap.png"),
+    chunk_idx = chunk_idx,
+    caption = "'Pair plot, illustrating the relationships between LVM, LVMi, height, and weight within each gender group (males in green and females in orange). Density distributions are shown along the diagonal.'"
+  )
+}
+```
+
+
+# Dimension Reduction Step {.tabset .tabset-fade .tabset-vmodern}
+
+## Overview {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+Having carefully chosen the phenotypic data (i.e., the cardiac MRI-derived LVMi) under study, the next step in lo-siRF is to do dimension reduction to reduce the number of SNVs under consideration using a genome-wide association study (GWAS). 
+This dimension reduction step is necessary to mitigate the computational and statistical challenges of searching across millions of possible SNVs (which in the case of searching for epistasis results in an even larger combinatorial explosion of possibilities).
+
+**Why GWAS?** 
+We chose to do dimension reduction by running a GWAS as it 
+(1) has been shown to be an incredibly useful tool for better understanding the genetic basis of numerous diseases in this field [@visscher201710; @pirruccello2020analysis; @meyer2020genetic; @harper2021common; @khurshid2023clinical], 
+(2) is one of the few methods that can handle an input of millions of SNVs in a computationally-tractable manner, and 
+(3) is a common, widely-accepted preprocessing step in other related statistical genomics tasks such as fine-mapping [@schaid2018genome].
+
+**Limitations:** 
+We acknowledge, however, that using a GWAS to reduce the number of SNVs under consideration has limitations. 
+Because a GWAS prioritizes SNVs that have strong marginal associations with the phenotype under study, we may be removing SNVs that are associated with LVMi through an epistatic interaction but not through a marginal association. 
+Alleviating this limitation is certainly interesting and an important direction to pursue in future work. 
+Regardless, in this current work, we use lo-siRF primarily as a way to generate recommendations for experimental validation of epistasis. 
+We thus are most interested in generating *reliable* recommendations for a limited number of experiments, rather than attempting to find all possible interactions that drive the disease. 
+Given our particular use-case for lo-siRF, we accept the limitations of using a GWAS for dimension reduction and again view this work as a reliable *first* step (and certainly not the last) for better understanding the role of epistasis in cardiac hypertrophy.
+
+**How was the dimension reduction performed?** 
+We performed a GWAS on the training data for the rank-based inverse normal-transformed LVMi using two algorithms, PLINK [@purcell2007plink] and BOLT-LMM [@loh2015efficient]. 
+For each of the two GWAS runs, we ranked the SNVs by significance (i.e., the GWAS p-value). 
+We then took the union of the top 1000 SNVs (without clumping) from each of the two GWAS runs and proceeded with this resulting set of 1405 SNVs for the remainder of the lo-siRF pipeline. 
+We refer to [@wang2023epistasis]() for the details on the PLINK and BOLT-LMM implementations and use this document instead to justify several of our human judgment calls in this dimension reduction step.
+
+- **Why PLINK and BOLT-LMM?** Since BOLT-LMM and PLINK rely on different statistical models and it is unclear a priori which model is better suited for our problem, we employed both software packages to mitigate the dependence of downstream conclusions on this arbitrary choice of model.
+- **Why the rank-based inverse normal-transformed LVMi?** Because the distribution of LVMi measurements is right skewed (see Figure \@ref(fig:subchunk-1)), and the p-value computation in PLINK and BOLT-LMM rely on normality assumptions, the rank-based inverse normal-transform was taken as in @khurshid2023clinical.
+- **Why was the union taken?** As mentioned previously, relying on a GWAS to do dimension reduction can be limiting since it is primarily assessing marginal associations between the SNVs and the phenotype. There are also other restrictive modeling assumptions (e.g., linearity) that may add to these limitations. Due to this concern that we may be imposing too many unnecessary restrictions in order for SNVs to pass the GWAS filter, we chose to take the union of the top SNVs from BOLT-LMM and from PLINK, rather than taking the intersection which would have made it more difficult or restrictive for SNVs to pass the GWAS filter.
+- **How was the threshold chosen?** We chose the threshold of 1000 SNVs per GWAS method (without clumping) as it (1) struck a balance between the amount of information loss and the computational cost of our downstream modeling and (2) yielded the highest validation prediction accuracy compared to choosing other possible thresholds (500 and 2000) with and without clumping in the prediction modeling stage. We note that this choice of the top 1000 SNVs includes all SNVs that passed the genome-wide significance level (p-value = 5E-8) as well as additional SNVs that did not pass the genome-wide significance level. In particular, taking the top 1000 SNVs corresponds to using the p-value threshold of 1.7E-5 and 6.7E-6 for PLINK and BOLT-LMM, respectively.
+
+**Organization:** Under the `GWAS Results Summary` tab, we provide an investigation into the BOLT-LMM and PLINK GWAS results for LVM and LVMi. Under the `GWAS-filtered SNVs`, we explore the selected 1405 SNVs that passed the GWAS filter for the LVMi phenotype.
+</div>
+
+## GWAS Results Summary {.unnumbered .tabset}
+
+<div class="panel panel-default padded-panel">
+Below, we provide an overview of the genome-wide association study (GWAS) results for both the LVM and LVMi phenotypes. While LVMi is the primary phenotype of interest, we provide the LVM GWAS results for completeness. We further investigate the similarities in findings between the LVM and LVMi GWAS analyses via a stability analysis. 
+
+- Under the `BOLT-LMM` and `PLINK` tabs:
+  - We provide a brief look into the GWAS results, including the Manhattan plots for each phenotype (LVMi and LVM). 
+  - We also provide a table of the genomic risk loci, lead SNVs, and independent significant SNVs from each GWAS, determined using FUMA [@watanabe2017functional] with the default settings (i.e., maximum p-value of lead SNVs = 5E-8, maximum p-value cutoff = 0.05, $r^2$ threshold to define independent significant SNVs = 0.6, 2nd $r^2$ threshold to define lead SNVs = 0.1, minimum minor allele frequency = 0, maximum distance between LD blocks to merge into a locus = 250kb, using the UKB release2b 10k White British reference panel population).
+  - Furthermore, we used FUMA to map SNVs to genes based on position, again with the default settings (maximum distance = 10kb), and provide this table of mapped genes below. 
+- Lastly, under the `Stability Analysis` tab, we investigated the similarities and differences between the BOLT-LMM and PLINK results as well as between the LVM and LVMi results. 
+</div>
+
+```{r gwas-manhattan, results = "asis"}
+
+gwas_methods <- c("BOLT-LMM", "Plink")
+
+gwas_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square} \n\n"
+phenotype_header <- "\n\n#### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle}\n\n"
+fuma_header <- "\n\n##### %s {.unnumbered}\n\n"
+
+PVAL_THR <- 4
+
+# plot gwas summary results
+if (params$eval) {
+  gwas_ls <- list()
+  snps_tab_ls <- list()
+  genes_tab_ls <- list()
+  for (gwas_method in gwas_methods) {
+    gwas_ls[[gwas_method]] <- list()
+    for (phenotype in phenotypes_all) {
+      # retrieve gwas results
+      gwas_dir <- paste0("gwas_", str_replace(tolower(gwas_method), "-", "_"))
+      fname <- paste0(phenotype, "_norm.stats_annot")
+      gwas_ls[[gwas_method]][[phenotype]] <- fread(
+        file.path(res_dir, gwas_dir, fname)
+      )
+
+      # retrieve annotated fuma gwas results
+      phenotype_name <- names(phenotypes_all)[phenotypes_all == phenotype]
+      gwas_method_fstr <- stringr::str_replace(tolower(gwas_method), "-", "_")
+      phenotype_fstr <- stringr::str_replace(tolower(phenotype), "ilvm", "lvmi")
+      fuma_fpath <- file.path(
+        res_dir, "gwas_fuma", 
+        sprintf("%s_%s_gwas", gwas_method_fstr, phenotype_fstr)
+      )
+      loci_tab <- fread(file.path(fuma_fpath, "GenomicRiskLoci.txt")) %>%
+        tibble::as_tibble()
+      leadsnps_tab <- fread(file.path(fuma_fpath, "leadSNPs.txt")) %>%
+        dplyr::select(-No) %>%
+        tibble::as_tibble()
+      indsigsnps_tab <- fread(file.path(fuma_fpath, "IndSigSNPs.txt")) %>%
+        dplyr::select(-No) %>%
+        tibble::as_tibble()
+      genes_tab <- fread(file.path(fuma_fpath, "genes.txt")) %>%
+        tibble::as_tibble() %>%
+        dplyr::mutate(
+          `GWAS Method` = !!gwas_method,
+          `Phenotype` = !!phenotype_name
+        )
+      snps_tab <- indsigsnps_tab %>%
+        dplyr::select(GenomicLocus:pos) %>%
+        dplyr::mutate(
+          `Top Lead SNP` = purrr::map_lgl(uniqID, ~ .x %in% loci_tab$uniqID),
+          `Lead SNP` = purrr::map_lgl(uniqID, ~ .x %in% leadsnps_tab$uniqID),
+          `Ind. Sig. SNP` = purrr::map_lgl(uniqID, ~ .x %in% indsigsnps_tab$uniqID),
+          `GWAS Method` = !!gwas_method,
+          `Phenotype` = !!phenotype_name
+        )
+      snps_tab_ls <- c(snps_tab_ls, list(snps_tab))
+      genes_tab_ls <- c(genes_tab_ls, list(genes_tab))
+    }
+  }
+
+  # compare bolt-lmm vs plink results
+  plt_df <- map2_dfr(gwas_ls[["BOLT-LMM"]], gwas_ls[["Plink"]],
+    function(bolt, plink) {
+      inner_join(
+        x = bolt %>%
+          select(SNP, `BOLT-LMM` = P_BOLT_LMM_INF) %>%
+          # filter(-log10(`BOLT-LMM`) > PVAL_THR) %>%
+          mutate(`BOLT-LMM` = -log10(`BOLT-LMM`)),
+        y = plink %>%
+          select(SNP, Plink = P_GLM) %>%
+          # filter(-log10(Plink) > PVAL_THR) %>%
+          mutate(Plink = -log10(Plink)),
+        by = "SNP"
+      )
+    },
+    .id = "Phenotype"
+  ) %>%
+    dplyr::mutate( # keep = (`BOLT-LMM` > PVAL_THR) | (Plink > PVAL_THR),
+      Phenotype = ifelse(Phenotype == "iLVM", "LVMi", Phenotype)
+    )
+  plt <- vdocs::plot_point(
+    plt_df, # %>% dplyr::filter(keep),
+    x_str = "BOLT-LMM", y_str = "Plink", size = .1
+  ) +
+    facet_grid(~Phenotype) +
+    labs(x = "-log10(BOLT-LMM P-value)", y = "-log10(PLINK P-value)")
+  saveRDS(plt, file.path(fig_res_dir, "gwas_pvalues_compare.rds"))
+  ggsave(plt,
+    filename = file.path(fig_res_dir, "gwas_pvalues_compare.png"),
+    width = 6, height = 3.5
+  )
+
+  # summarize fuma gwas SNP results using stability across gwas runs
+  snps_tab <- dplyr::bind_rows(snps_tab_ls) %>%
+    tidyr::pivot_wider(
+      id_cols = c(uniqID:pos),
+      names_from = c(`GWAS Method`, `Phenotype`),
+      values_from = c(`Top Lead SNP`, `Lead SNP`, `Ind. Sig. SNP`),
+      names_sep = " ",
+      names_prefix = "- ",
+      values_fill = FALSE
+    ) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      n_counts = sum(dplyr::c_across(where(is.logical)))
+    ) %>%
+    dplyr::left_join(
+      gwas_ls[["BOLT-LMM"]][["iLVM"]] %>%
+        dplyr::select(rsID = SNP, `BOLT-LMM LVMi p-value` = P_BOLT_LMM_INF),
+      by = "rsID"
+    ) %>%
+    dplyr::left_join(
+      gwas_ls[["BOLT-LMM"]][["LVM"]] %>%
+        dplyr::select(rsID = SNP, `BOLT-LMM LVM p-value` = P_BOLT_LMM_INF),
+      by = "rsID"
+    ) %>%
+    dplyr::left_join(
+      gwas_ls[["Plink"]][["iLVM"]] %>%
+        dplyr::select(rsID = SNP, `Plink LVMi p-value` = P_GLM),
+      by = "rsID"
+    ) %>%
+    dplyr::left_join(
+      gwas_ls[["Plink"]][["LVM"]] %>%
+        dplyr::select(rsID = SNP, `Plink LVM p-value` = P_GLM),
+      by = "rsID"
+    ) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      n_p = sum(!is.na(dplyr::c_across(tidyselect::contains("p-value")))),
+      avg_p = mean(dplyr::c_across(tidyselect::contains("p-value")), na.rm = TRUE)
+    ) %>%
+    dplyr::arrange(-n_counts, -n_p, avg_p)
+
+  snps_tab_long <- snps_tab %>%
+    dplyr::select(
+      -uniqID, -chr, -pos, -n_counts, -n_p, -avg_p,
+      -tidyselect::contains("p-value")
+    ) %>%
+    tidyr::pivot_longer(
+      cols = c(
+        tidyselect::starts_with("Top"),
+        tidyselect::starts_with("Lead"),
+        tidyselect::starts_with("Ind")
+      )
+    ) %>%
+    dplyr::mutate(
+      Method = stringr::str_trim(stringr::str_extract(name, "(?<=-)\\s*.*")),
+      Group = factor(
+        stringr::str_trim(stringr::str_extract(name, "^[^-]+")) %>%
+          stringr::str_replace("SNP", "SNV"),
+        levels = c("Top Lead SNV", "Lead SNV", "Ind. Sig. SNV")
+      ),
+      rsID = factor(rsID, levels = rev(snps_tab$rsID)),
+      value = factor(
+        ifelse(value, "True", "False"),
+        levels = c("True", "False")
+      )
+    )
+
+  plt <- ggplot2::ggplot(snps_tab_long) +
+    ggplot2::aes(x = Method, y = rsID, fill = value) +
+    ggplot2::facet_grid(~Group) +
+    ggplot2::geom_tile(color = "white") +
+    ggplot2::scale_fill_manual(
+      values = c("#337ab7", "grey80"), na.value = "grey80"
+    ) +
+    ggplot2::labs(x = "", fill = "") +
+    vthemes::theme_vmodern(
+      x_text_angle = TRUE, bg_color = "white", grid_color = "white"
+    )
+  saveRDS(plt, file.path(fig_res_dir, "gwas_fuma_snps_stability_plot.rds"))
+  ggsave(plt,
+    filename = file.path(fig_res_dir, "gwas_fuma_snps_stability_plot.png"),
+    width = 8, height = 6
+  )
+
+  dt <- snps_tab %>%
+    dplyr::select(uniqID:pos) %>%
+    pretty_DT(rownames = FALSE)
+  saveRDS(dt, file.path(tab_res_dir, "gwas_fuma_snps_stability_table.rds"))
+
+  # summarize fuma gwas mapped gene results using stability across gwas runs
+  genes_tab <- dplyr::bind_rows(genes_tab_ls) %>%
+    dplyr::mutate(value = TRUE) %>%
+    tidyr::pivot_wider(
+      id_cols = c(ensg, symbol, chr, start, end),
+      names_from = c(`GWAS Method`, `Phenotype`),
+      values_from = value,
+      names_sep = " ",
+      values_fill = FALSE
+    ) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      n_counts = sum(dplyr::c_across(where(is.logical)))
+    ) %>%
+    dplyr::arrange(-n_counts)
+
+  genes_tab_long <- genes_tab %>%
+    dplyr::select(-ensg, -chr, -start, -end, -n_counts) %>%
+    tidyr::pivot_longer(cols = -symbol) %>%
+    dplyr::mutate(
+      symbol = factor(symbol, levels = rev(genes_tab$symbol)),
+      value = factor(
+        ifelse(value, "Mapped", "Not Mapped"),
+        levels = c("Mapped", "Not Mapped")
+      )
+    )
+
+  plt <- ggplot2::ggplot(genes_tab_long) +
+    ggplot2::aes(x = name, y = symbol, fill = value) +
+    ggplot2::geom_tile(color = "white") +
+    ggplot2::scale_fill_manual(
+      values = c("#337ab7", "grey80"), na.value = "grey80"
+    ) +
+    ggplot2::labs(x = "", fill = "", y = "Gene Symbol") +
+    vthemes::theme_vmodern(
+      x_text_angle = TRUE, bg_color = "white", grid_color = "white"
+    )
+  saveRDS(plt, file.path(fig_res_dir, "gwas_fuma_genes_stability_plot.rds"))
+  ggsave(plt,
+    filename = file.path(fig_res_dir, "gwas_fuma_genes_stability_plot.png"),
+    width = 6, height = 5
+  )
+
+  dt <- genes_tab %>%
+    dplyr::select(ensg:end) %>%
+    pretty_DT(rownames = FALSE)
+  saveRDS(dt, file.path(tab_res_dir, "gwas_fuma_genes_stability_table.rds"))
+} else {
+  for (gwas_method in gwas_methods) {
+    cat(sprintf(gwas_header, toupper(gwas_method)))
+    for (phenotype in phenotypes_all) {
+      phenotype_name <- names(phenotypes_all)[phenotypes_all == phenotype]
+      gwas_method_fstr <- stringr::str_replace(tolower(gwas_method), "-", "_")
+      phenotype_fstr <- stringr::str_replace(tolower(phenotype), "ilvm", "lvmi")
+      fpath <- file.path(
+        res_dir, "gwas_fuma", 
+        sprintf("%s_%s_gwas", gwas_method_fstr, phenotype_fstr)
+      )
+      cat(sprintf(phenotype_header, phenotype_name))
+      display_image(
+        file.path(
+          res_dir, "gwas_fuma", 
+          sprintf("manhattan_%s_%s.png", gwas_method_fstr, phenotype_fstr)
+        ),
+        chunk_idx = chunk_idx,
+        caption = sprintf("'GWAS Manhattan plot for the %s phenotype using %s. Red dashed line indicates the genome-wide significance level (p = 5E-8).'", phenotype_name, gwas_method)
+      )
+
+      cat(sprintf(fuma_header, "Genomic Risk Loci"))
+      dt <- fread(file.path(fpath, "GenomicRiskLoci.txt")) %>%
+        dplyr::select(-nSNPs) %>%
+        dplyr::rename(
+          nGWASSNVs = nGWASSNPs,
+          nIndSigSNVs = nIndSigSNPs,
+          IndSigSNVs = IndSigSNPs,
+          nLeadSNVs = nLeadSNPs,
+          LeadSNVs = LeadSNPs
+        ) %>%
+        pretty_DT(rownames = FALSE)
+      subchunkify(dt,
+        i = chunk_idx,
+        caption = sprintf("'**List of genomic risk loci from FUMA for the %s %s GWAS.** uniqID = Unique ID of SNVs consists of chr:position:allele1:allele2 where alleles are alphabetically ordered. rsID = rsID of the top lead SNV for the given genomic locus. chr = Chromosome of top lead SNV. pos = Position of top lead SNV on hg19. p = P-value of top lead SNV. start = Start position of the locus. end = End position of the locus. nGWASSNVs = Number of the GWAS-tagged candidate SNVs within the genomic locus. nIndSigSNVs = Number of the independent significant SNVs in the genomic locus. IndSigSNVs = rsID of independent significant SNVs in the genomic locus. nLeadSNVs = The number of lead SNVs in the genomic locus. LeadSNVs = rsID of lead SNVs in the genomic locus.'", phenotype_name, gwas_method)
+      )
+      chunk_idx <- chunk_idx + 1
+
+      cat(sprintf(fuma_header, "Lead SNVs"))
+      dt <- fread(file.path(fpath, "leadSNPs.txt")) %>%
+        dplyr::select(-No) %>%
+        dplyr::rename(
+          nIndSigSNVs = nIndSigSNPs,
+          IndSigSNVs = IndSigSNPs
+        ) %>%
+        pretty_DT(rownames = FALSE)
+      subchunkify(dt,
+        i = chunk_idx,
+        caption = sprintf("'**List of lead SNVs from FUMA for the %s %s GWAS.** GenomicLocus = Index of assigned genomic locus (note: multiple independent lead SNVs can be assigned to the same genomic locus). uniqID = Unique ID of SNVs consists of chr:position:allele1:allele2 where alleles are alphabetically ordered. rsID = rsID of the SNV. chr = Chromosome. pos = Position on hg19. p = P-value from GWAS. nIndSigSNVs = Number of independent significant SNVs which are in LD of the lead SNV at $r^2$ = 0.1. IndSigSNVs = rsID of independent significant SNVs which are in LD of the lead SNV at $r^2$ = 0.1.'", phenotype_name, gwas_method)
+      )
+      chunk_idx <- chunk_idx + 1
+
+      cat(sprintf(fuma_header, "Independent Significant SNVs"))
+      dt <- fread(file.path(fpath, "IndSigSNPs.txt")) %>%
+        dplyr::select(-No, -nSNPs) %>%
+        dplyr::rename(
+          nGWASSNVs = nGWASSNPs
+        ) %>%
+        pretty_DT(rownames = FALSE)
+      subchunkify(dt,
+        i = chunk_idx,
+        caption = sprintf("'**List of independent significant SNVs from FUMA for the %s %s GWAS.** GenomicLocus = Index of assigned genomic locus (note: multiple independent lead SNVs can be assigned to the same genomic locus). uniqID = Unique ID of SNVs consists of chr:position:allele1:allele2 where alleles are alphabetically ordered. rsID = rsID of the SNV. chr = Chromosome. pos = Position on hg19. p = P-value from GWAS. nGWASSNVs = Number of GWAS-tagged SNVs which are in LD of the independent significant SNV given $r^2$ = 0.6.'", phenotype_name, gwas_method)
+      )
+      chunk_idx <- chunk_idx + 1
+
+      cat(sprintf(fuma_header, "Mapped Genes"))
+      dt <- fread(file.path(fpath, "genes.txt")) %>%
+        dplyr::select(-tidyselect::any_of(c("ciMap", "ciMapts"))) %>%
+        dplyr::rename(
+          posMapSNVs = posMapSNPs,
+          IndSigSNVs = IndSigSNPs
+        ) %>%
+        pretty_DT(rownames = FALSE)
+      subchunkify(dt,
+        i = chunk_idx,
+        caption = sprintf("'**List of mapped genes (via positional mapping) from FUMA for the %s %s GWAS.** ensg = ENSG ID. symbol = Gene Symbol. chr = Chromosome. start = Starting position of the gene. end = Ending position of the gene. strand = Strand of the gene. type = Gene biotype from Ensembl. entrezID = entrez ID (if available). HUGO = HUGO (HGNC) gene symbol. pLI = pLI score (the probability of being loss-of-function intolerant) from ExAC database; the higher the score is, the more intolerant to loss-of-function mutations the gene is. ncRVIS = Non-coding residual variation intolerance score; the higher the score is, the more intolerant to non-coding variation the gene is. posMapSNVs = Number of SNVs mapped to gene based on positional mapping. posMapMaxCADD = The maximum CADD score of mapped SNVs by positional mapping. minGwasP = The minimum P-value of mapped SNVs. IndSigSNVs = rsID of the independent significant SNVs that are in LD with the mapped SNVs. GenomicLocus = Index of genomic loci where mapped SNVs are from.'", phenotype_name, gwas_method)
+      )
+      chunk_idx <- chunk_idx + 1
+    }
+  }
+}
+```
+
+
+### Stability Analysis {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle}
+
+<div class="panel panel-default padded-panel">
+To further investigate the choice of GWAS method and phenotype, we conducted a deeper exploration into the similarities and differences between the BOLT-LMM and PLINK results as well as between the LVM and LVMi results in the stability analysis below. The primary goal of this stability analysis is to answer the following two questions:
+
+1. **Are there large differences between the GWAS p-values from BOLT-LMM and PLINK?**
+  - Figure \@ref(fig:subchunk-22): For each SNV, we plot the p-value (log-transformed) obtained via BOLT-LMM (x-axis) and PLINK (y-axis) for each of the LVM (left) and LVMi (right) phenotypes. We see that the most significant GWAS hits tend to be stable, no matter the choice of algorithm, but as the strength of the association decreases, there is greater variation in the p-value between BOLT-LMM and PLINK. This is to say that there is more stability around the SNVs with the strongest associations with LVMi and less stability around the SNVs with moderate or weak associations with LVMi. Another reason for taking the union of the top 1000 SNVs from each GWAS algorithm in the lo-siRF pipeline was to allow these moderate to weak association SNVs the chance of being identified in a multivariate model (i.e., via iterative random forest).
+
+2. **What are the FUMA GWAS findings that are stable across GWAS methods (BOLT-LMM and PLINK) and choice of phenotype (LVM and LVMi)?** As advocated by the stability principle ("S" in PCS) [@yu2020veridical; @yu2013stability], we view stability across these arbitrary choices as a minimum requirement for making a scientific discovery.
+  - In Figure \@ref(fig:subchunk-23), we summarize the SNVs, identified by FUMA, to be the top lead SNVs (per genomic risk locus), lead SNVs, and/or independent significant SNVs for each GWAS method (BOLT-LMM and PLINK) and choice of phenotype (LVM and LVMi). Some takeaways here:
+    - rs3045696, an intronic *TTN* variant, is the only stable top lead SNV, identified across all four GWAS runs.
+    - Besides rs3045696, rs1873164, an intronic *CCDC141* variant, is the only stable lead SNV, identified by FUMA across all four GWAS runs.
+    - rs7591091 (an intronic *CCDC141* variant with the highest frequency of occurrence in lo-siRF, seen later), along with rs967507, rs12622500, and rs10178003, were stably identified as independent significant SNVs by FUMA across all four GWAS runs.
+    - Two other SNVs (rs62178977, rs73973171) were also identified as independent significant SNVs by FUMA using both BOLT-LMM and PLINK for the LVMi phenotype.
+  - In Figure \@ref(fig:subchunk-24), we summarize the genes that were positionally-mapped and prioritized by FUMA across the different GWAS methods (BOLT-LMM and PLINK) and choice of phenotype (LVM and LVMi).
+    - The genes that were stably mapped by FUMA across all four GWAS runs are *PRKRA*, *DFNB59*, *FKBP7*, *PLEKHA3*, *TTN*, and *CCDC141*. We note that all of these genes are located near each other on chromosome 2 within ~600kb. The start position of PRKRA is 179296141 while the end position of CCDC141 is 179914813, with all other aforementioned genes in between.
+    - No other genes were identified when using both BOLT-LMM and PLINK for the LVMi phenotype.
+</div>
+
+```{r gwas-stability, results = "asis"}
+PVAL_THR <- 4
+
+# plot summary results
+if (!params$eval) {
+  display_image(file.path(fig_res_dir, "gwas_pvalues_compare.png"),
+    chunk_idx = chunk_idx,
+    caption = "'Comparison of the BOLT-LMM and PLINK GWAS p-values for each phenotype (LVM left, LVMi right). Each point represents a SNV with its BOLT-LMM p-value on the x-axis and its PLINK p-value on the y-axis.'"
+  )
+
+  display_image(file.path(fig_res_dir, "gwas_fuma_snps_stability_plot.png"),
+    chunk_idx = chunk_idx,
+    caption = "'Summary of annotated SNVs from FUMA across different GWAS methods (BOLT-LMM and PLINK) and across different choices of phenotype (LVMi and LVM).'"
+  )
+
+  # dt <- readRDS(file.path(tab_res_dir, "gwas_fuma_snps_stability_table.rds"))
+  # subchunkify(dt, i = chunk_idx, caption = "'List of annotated SNVs from FUMA.'")
+  # chunk_idx <- chunk_idx + 1
+
+  display_image(file.path(fig_res_dir, "gwas_fuma_genes_stability_plot.png"),
+    chunk_idx = chunk_idx,
+    caption = "'Summary of mapped genes from FUMA across different GWAS methods (BOLT-LMM and PLINK) and across different choices of phenotype (LVMi and LVM).'"
+  )
+
+  # dt <- readRDS(file.path(tab_res_dir, "gwas_fuma_genes_stability_table.rds"))
+  # subchunkify(dt, i = chunk_idx, caption = "'List of mapped genes from FUMA.'")
+  # chunk_idx <- chunk_idx + 1
+}
+```
+
+## GWAS-filtered SNVs {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+In this section, we briefly explore the selected 1405 SNVs that passed the GWAS filter for the LVMi phenotype. We make two observations that will impact how we interpret the lo-siRF fit downstream:
+
+- There are strong correlations within blocks of neighboring SNVs due to linkage disequilibrium (LD) (Figure \@ref(fig:subchunk-25)). This is a large contributing factor for why we ultimately extracted feature importances from the lo-siRF fit at the level of genetic loci, rather than for each individual SNV.
+- There are large differences in the number of SNVs that passed the GWAS filter from each genetic loci (Figure \@ref(fig:subchunk-26)). We hence must account for this in the lo-siRF locus-level importance score. 
+
+We will expand upon this locus-level importance score in a later section (see `Prioritization Step`).
+
+Additional notes:
+
+- Given the interest in *CCDC141* and *TTN* in our work and their close proximity to each other on chromosome 2, we point out a couple pairwise (Pearson) correlations of particular relevance:
+  - $| Cor(\text{rs7591091}, \text{ rs66733621}) | = 0.35$
+  - $| Cor(\text{rs7591091}, \text{ rs3045696}) | = 0.34$
+  - rs7591091 is the top SNV from the CCDC141 locus in lo-siRF and is one of the top CCDC141 GWAS hits (in fact, is identified to be a stable independent significant SNV (see `GWAS Results Summary` tab)). rs3045696, an intronic *TTN* SNV, was stably identified to be a top lead SNV in the GWASes, and rs66733621 is the top SNV from the TTN locus in lo-siRF. This is to say that the correlation between the CCDC141 and TTN loci is moderate and may possibly suggest independent roles of CCDC141 and TTN in their detected interaction. A further discussion of this is provided in [@wang2023epistasis](). [Note: we use the term *top SNV from a genetic locus in lo-siRF* to mean the SNV in the specified genetic locus with the highest frequency of occurrence across decision paths in the siRF fit.]
+
+</div>
+
+```{r eda-top-snps, results = "asis"}
+
+HEATMAP_HEIGHT <- 8
+
+phenotype_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+subsection_header <- "\n\n#### %s {.unnumbered}\n\n"
+phenotype <- "iLVM"
+phenotype_name <- "LVMi"
+
+if (params$eval) {
+  # load in data
+  nsnps <- 1000
+  bolt_dir <- file.path(res_dir, "gwas_bolt_lmm")
+  plink_dir <- file.path(res_dir, "gwas_plink")
+  keep_snps <- map(
+    c(bolt_dir, plink_dir),
+    function(fdir) {
+      fpath <- file.path(fdir, paste0(phenotype, "_norm.stats_annot"))
+      snps <- fread(fpath) %>%
+        slice(1:nsnps) %>%
+        pull(SNP)
+    }
+  ) %>%
+    purrr::reduce(c) %>%
+    unique()
+  snp_df <- loadSNPInfo(keep_snps, by = "rsID")
+  write.csv(
+    snp_df %>% dplyr::select(-Name),
+    file.path(res_dir, "gwas_filtered_snps.csv"),
+    quote = FALSE, row.names = FALSE
+  )
+
+  # frequency table of snps in each loci
+  tab_out <- snp_df %>%
+    group_by(Chr, Gene) %>%
+    summarise(
+      `Start Pos.` = min(Pos),
+      `End Pos.` = max(Pos),
+      `# SNPs` = n(),
+      `Gene Function` = data.frame(table(`Gene Function`)) %>%
+        mutate(str = paste0(Gene.Function, ": ", Freq)) %>%
+        pull(str) %>%
+        paste(collapse = "; ")
+    ) %>%
+    arrange(Chr, `Start Pos.`) %>%
+    rename("Locus" = "Gene", "Function" = "Gene Function")
+  saveRDS(
+    tab_out,
+    file.path(
+      tab_res_dir,
+      paste0(phenotype, "_gwas_snps_frequency_by_gene.rds")
+    )
+  )
+  write.csv(
+    tab_out, 
+    file.path(res_dir, "gwas_filtered_snps_by_loci.csv"), 
+    quote = FALSE, row.names = FALSE
+  )
+
+  # get data to make correlation heatmap
+  invisible(capture.output(
+    train_data <- loadData(
+      pheno_name = phenotype, pheno_binary = F,
+      n = 15000, n_test = 0, include_dems = F,
+      keep_snps = keep_snps
+    )
+  ))
+
+  # snp correlation heatmap
+  gnames <- snp_df %>%
+    group_by(Gene) %>%
+    mutate(GeneName = paste(Gene, rsID, sep = ", ")) %>%
+    pull(GeneName)
+  plt_df <- train_data$geno_train
+  colnames(plt_df) <- gnames
+  plt <- vdocs::plot_cor_heatmap(X = plt_df, absolute_value = TRUE, clust = FALSE) +
+    labs(x = "SNV", y = "SNV", fill = "|Correlation|") +
+    ggplot2::scale_fill_gradient(low = "white", high = "red")
+  # clean up axes labels - only show genes with > 2 snps
+  data_long <- plt$data %>%
+    mutate(
+      Gene_y = forcats::fct_inorder(
+        purrr::map_chr(stringr::str_split(y, ", "), ~ .x[[1]])
+      ),
+      Gene_x = forcats::fct_inorder(
+        purrr::map_chr(stringr::str_split(x, ", "), ~ .x[[1]])
+      )
+    )
+  gene_freq <- table(data_long$Gene_x) / min(table(data_long$Gene_x))
+  invisible_genes <- names(gene_freq[gene_freq <= 2])
+  plt_breaks <- data_long %>%
+    dplyr::group_by(Gene_x) %>%
+    dplyr::mutate(
+      order = 1:dplyr::n() - round(dplyr::n() / 2),
+      Gene_x = ifelse(Gene_x %in% invisible_genes, "", as.character(Gene_x))
+    ) %>%
+    dplyr::filter(order == 0) %>%
+    dplyr::ungroup()
+  plt_breaks <- dplyr::bind_rows(
+    plt_breaks,
+    data.frame(Gene_x = "TTN, rs66733621", x = "TTN, rs66733621", order = 1),
+    data.frame(Gene_x = "TTN, rs3045696", x = "TTN, rs3045696", order = 1),
+    data.frame(Gene_x = "CCDC141, rs7591091", x = "CCDC141, rs7591091", order = 1)
+  )
+  plt <- plt +
+    ggplot2::scale_x_discrete(
+      breaks = plt_breaks$x, labels = plt_breaks$Gene_x
+    ) +
+    ggplot2::scale_y_discrete(
+      breaks = plt_breaks$x, labels = plt_breaks$Gene_x
+    ) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(
+        angle = 90, hjust = 1, vjust = 0.5,
+        color = ifelse(plt_breaks$order, "cornflowerblue", "black")
+      ),
+      axis.text.y = ggplot2::element_text(
+        color = ifelse(plt_breaks$order, "cornflowerblue", "black")
+      )
+    )
+  saveRDS(
+    plt,
+    file.path(
+      fig_res_dir,
+      paste0(phenotype, "_gwas_snps_cor_heatmap_by_pos.rds")
+    )
+  )
+  ggsave(plt,
+    filename = file.path(
+      fig_res_dir, paste0(phenotype, "_gwas_snps_cor_heatmap_by_pos.png")
+    ),
+    width = 12, height = 10
+  )
+} else {
+  cat(sprintf(phenotype_header, sprintf("%s - Correlation Between GWAS-filtered SNVs", phenotype_name)))
+  display_image(
+    file.path(fig_res_dir, paste0(phenotype, "_gwas_snps_cor_heatmap_by_pos.png")),
+    chunk_idx = chunk_idx,
+    caption = "'Correlation heatmap for the GWAS-filtered SNVs. We plot the magnitude of the Pearson correlation between all possible pairs of SNVs that passed the GWAS filter. Darker red indicates higher correlation between the two SNVs. SNVs along the axes are ordered according to genomic location. Loci with more than two constituent SNVs are labeled.'"
+  )
+
+  cat(sprintf(phenotype_header, sprintf("%s - Table of GWAS-filtered SNVs", phenotype_name)))
+  tab <- readRDS(
+    file.path(
+      tab_res_dir,
+      paste0(phenotype, "_gwas_snps_frequency_by_gene.rds")
+    )
+  ) %>%
+    dplyr::select(-`Start Pos.`, -`End Pos.`) %>%
+    dplyr::rename(
+      "Locus" = "Gene", 
+      "# SNVs" = "# SNPs", 
+      "Function" = "Gene Function"
+    ) %>%
+    pretty_DT(rownames = FALSE)
+  subchunkify(tab,
+    i = chunk_idx, other_args = "out.width='100%'",
+    caption = "'Number of SNVs per genetic locus that passed the GWAS filter. Note: a semicolon is used to denote the intergenic region between two genes.'"
+  )
+  chunk_idx <- chunk_idx + 1
+}
+```
+
+
+# Binarization Step {.tabset .tabset-fade .tabset-vmodern}
+
+## Overview {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+
+In the next step of lo-siRF, we chose to binarize the (continuous) LVMi phenotype measurements into two categories: a low LVMi group and a high LVMi group before fitting the prediction models.
+
+**Why did we choose to binarize?** One of our main motivating factors to pursue binarization revolved around the prediction check criteria in the PCS framework [@yu2020veridical]. This predictability principle advocates for the use of prediction accuracy as a reality check. This is to say that at a minimum, models should fit the data well, as measured by prediction accuracy, before believing that the model is capturing something relevant to reality or the real-world phenomena under study. In particular, before we thought to binarize the phenotype, we first attempted to train prediction models using the GWAS-filtered SNVs to predict the original (continuous) LVMi phenotype measurements. While this seemed like the most natural next step, these prediction results illuminated an incredibly weak prediction signal, with validation $R^2$ values hovering very close to 0 (see `Prediction Results without Binarization` tab). Given that an $R^2$ value of 0 can be achieved by simply predicting the mean LVMi response, this raised the question of whether these prediction models are capturing any relevant signal in the data. Consequently, the interpretation of these models may not be an accurate representation of reality. Put differently, these models do not satisfy the prediction check criteria under the PCS framework.
+
+Given these difficulties in accurately predicting LVMi, we turned to an alternative school of thought in order to extract reliable insights from such low-signal data. Drawing inspiration from how scientists often reduce complex problems into simplified versions, we can simplify the problem of trying to understand how SNVs are associated with everyone's precise LVMi measurements to asking which SNVs are associated with having extremely high or extremely low LVMi measurements. In other words, we can reduce the problem of predicting (continuous) LVMi responses to predicting whether one has an extremely high LVMi or low LVMi. This binarization not only simplifies the problem conceptually, but may also help to denoise since we are only looking at the more extreme LVMi cases to gain understanding. Furthermore, the original regression problem becomes a classification problem after binarization, which can help to facilitate the interpretation of prediction performance with respect to the prediction check (e.g., it is arguably easier to reason about the practical difference between 55% and 50% balanced classification accuracy than $R^2$ values of 0.05 and 0).
+
+**How is the binarization done?** In order to binarize the LVMi responses, one must choose some threshold. We chose to binarize the response based on quantiles so that for a given threshold *x*, we took the top and bottom *x*\% of LVMi values and pooled them into the high and low LVMi groups, respectively, while omitting the individuals in the middle quantile range. However, due to the gender-specific biological variation of LVMi shown earlier in the exploratory data analysis (see `Choice of Phenotypic Data`), we performed the binarization for males and females separately. Finally, given that this threshold is artificially introduced, we run the remainder of the lo-siRF pipeline using three different reasonable binarization thresholds (15\%, 20\%, 25\%) that balance the amount of denoising and data lost. In the end, we will consolidate the results that were stable across all three binarization thresholds, described later.
+
+We expand on the prediction modeling with the binarized LVMi phenotype in the next section (see `Prediction Step`).
+
+</div>
+
+
+## Prediction Results without Binarization {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+
+Here, we present a summary of the prediction modeling results, where we use the GWAS-filtered SNVs to predict the raw LVMi phenotype measurements (i.e., without any binarization). Specifically, we measure the validation set prediction accuracy from several popular machine learning regression algorithms (kernel ridge regression, Lasso regression, ridge regression, random forest (RF), and signed iterative random forest (siRF)) across four different prediction performance metrics - the Pearson correlation, mean absolute error (MAE), R-squared, and root-mean-squared error (RMSE) between the observed LVMi response and the predicted LVMi response. We also visualize how the predicted responses differ across the different prediction models in the provided pair plots. Though RF appears to yield the best prediction performance relative to the other methods under consideration, the RF prediction performance is still very poor as both the correlation and R-squared metrics are very close to 0. 
+
+</div>
+
+```{r pred-results-cts, results = "asis"}
+
+# phenotype_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+section_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+subsection_header <- "\n\n##### %s {.unnumbered} \n\n"
+
+methods <- c(
+  "Lasso" = "lasso", 
+  "Ridge" = "ridge",
+  "RF" = "rf", 
+  "siRF" = "irf", 
+  "Kernel Ridge" = "kernel_ridge"
+)
+
+if (params$eval) {
+  for (phenotype in phenotypes) {
+    fpath <- file.path(res_dir, paste0(phenotype, "_gwas_filtered_nsnps1000"))
+
+    # read in prediction results with demographics
+    load(file.path(fpath, "validation_pheno.Rdata")) # > pheno
+    preds_data <- list(
+      yhat = c(
+        readRDS(file.path(fpath, "ypred.rds")),
+        fread(file.path(fpath, "ypred.csv"))
+      ),
+      y = pheno,
+      gender = ifelse(
+        loadDemographics(names(pheno))[, "gender"] == 1,
+        "Male", "Female"
+      ) %>%
+        as.factor()
+    )
+
+    preds_data$yhat <- preds_data$yhat[methods]
+    names(preds_data$yhat) <- names(methods)
+
+    # prediction accuracy table
+    metrics <- c("RMSE", "R2", "MAE", "Correlation")
+    eval_out <- map_dfr(preds_data$yhat,
+      ~ evalPreds(
+        y = preds_data$y, yhat = c(.x),
+        metric = metrics
+      ),
+      .id = "Method"
+    ) %>%
+      spread(key = "Metric", value = "Value") %>%
+      dplyr::mutate(
+        dplyr::across(
+          c(Correlation, R2),
+          ~ ifelse(.x == max(.x),
+            kableExtra::cell_spec(
+              formatC(.x, digits = 3, format = "g", flag = "#"), 
+              bold = TRUE
+            ),
+            formatC(.x, digits = 3, format = "g", flag = "#")
+          )
+        ),
+        dplyr::across(
+          c(MAE, RMSE),
+          ~ ifelse(.x == min(.x),
+            kableExtra::cell_spec(
+              formatC(.x, digits = 4, format = "g", flag = "#"), 
+              bold = TRUE
+            ),
+            formatC(.x, digits = 4, format = "g", flag = "#")
+          )
+        )
+      )
+    tab <- pretty_DT(eval_out,
+      digits = 4, sigfig = TRUE, rownames = FALSE,
+      na_disp = "--",
+      options = list(pageLength = nrow(eval_out), dom = "t")
+    )
+    saveRDS(
+      tab,
+      file.path(tab_res_dir, paste0(phenotype, "_pred_accuracy.rds"))
+    )
+
+    # prediction pair plots
+    plt_df <- map_dfc(preds_data$yhat, ~ c(.x))
+    plt <- plot_pairs(
+      data = plt_df, columns = 1:ncol(plt_df),
+      color = preds_data$gender
+    )
+    saveRDS(
+      plt,
+      file.path(fig_res_dir, paste0(phenotype, "_pred_pair_plot.rds"))
+    )
+  }
+} else {
+  for (phenotype in phenotypes) {
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    # cat(sprintf(phenotype_header, phenotype_name))
+
+    # prediction accuracy table
+    cat(sprintf(section_header, "Prediction Accuracies"))
+    tab <- readRDS(
+      file.path(tab_res_dir, paste0(phenotype, "_pred_accuracy.rds"))
+    )
+    subchunkify(tab,
+      i = chunk_idx,
+      caption = sprintf("'Summary of prediction performance on the validation set for the %s phenotype (without binarization) across various prediction methods and evaluation metrics.'", phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+
+    # prediction pair plots
+    cat(sprintf(section_header, "Prediction Pair Plot"))
+    plt <- readRDS(
+      file.path(
+        fig_res_dir,
+        paste0(phenotype, "_pred_pair_plot.rds")
+      )
+    )
+    subchunkify(plt,
+      i = chunk_idx, fig_height = plt$ncol * 1.5,
+      add_class = c("panel panel-default"),
+      other_args = "out.width='100%'",
+      caption = sprintf("'Pair plot of the predicted %s responses from various prediction models. Each point represents an individual in the validation set, and the coordinates represent the predicted %s response from two different prediction methods, which are specified by the x and y-axes labels in each subplot. Density distributions of the predicted %s responses are shown along the diagonal.'", phenotype_name, phenotype_name, phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+  }
+}
+```
+
+# Prediction Step {.tabset .tabset-fade .tabset-vmodern}
+
+<div class="panel panel-default padded-panel">
+
+After choosing to binarize the LVMi phenotype, we next fit various prediction models using the GWAS-filtered SNVs to predict the binarized LVMi phenotype and assess their validation prediction accuracy. 
+
+**Which models were chosen and why?** While there are many methods, each with their unique advantages and disadvantages, for detecting epistasis from data [e.g., see @niel2015survey and references therein], we chose to focus on siRF [@kumbier2018refining] as our primary interaction search engine for various reasons. 
+
+1. Unlike many methods that make linear assumptions or require pre-specification of interaction order (i.e., the number of features involved in an interaction), siRF can identify *higher-order*, *nonlinear* Boolean interactions in a computationally-tractable manner without the need to specify the interaction order of interest. 
+2. Another advantage of siRF for detecting interactions is the resemblance between the localized thresholding behavior of its decision trees and the threshold (or on-off switch-like) behavior frequently observed in biomolecular interactions [@nelson2008lehninger]. In other words, the form of the siRF model appears to be well-suited for the biological phenomena under study.
+3. Furthermore, the prediction accuracy of the siRF model fit can be easily assessed. As discussed previously, prediction accuracy can serve as an indicator of whether or not the model is an accurate representation of reality. This prediction check is a necessary pre-requisite for interpreting the prediction model and is especially important in low-signal regimes such as this study.
+4. siRF and its predecessor iRF have demonstrated great success in detecting reliable interactions in previous real-world studies, such as in epistasis-controlled hair color [@behr2020learning], obesity [@allen2022using], schizophrenia [@de2022machine], and predictive gene expression networks [@cliff2019high; @walker2022evaluating].
+5. Finally, due to the weak phenotypic signal and the strong correlations between neighboring SNVs due to linkage disequilibrium (see Figure \@ref(fig:subchunk-25)), we believed it was most appropriate to recommend interactions between genetic loci, rather than interactions betweeen individual SNVs. While it is not always clear how to perform this locus-level interaction search when the data is given at the SNV-level, we can build upon the siRF structure to aggregate feature importances across multiple SNVs using our new locus-level importance score, described in [@wang2023epistasis]().
+
+Though we are most interested in interpreting the siRF prediction model to identify candidate epistatic interactions, we also fit several other popular prediction models, including RF, L1-regularized logistic regression (Lasso), L2-regularized logistic regression (ridge), and support vector machines (SVM). These prediction models serve as baselines to ensure that siRF indeed fits the data well, relative to these other popular prediction models, and that siRF passes the prediction check in accordance with the PCS framework [@yu2020veridical].
+
+**Summary of prediction results:** For all of the classification algorithms under investigation, we see that the validation prediction accuracy metrics, measured via classification accuracy, area under the ROC curve (AUROC), and area under the precision-recall curve (AUPRC), are all comfortably above the random-guessing baseline of 0.5 across three different binarization thresholds. This suggests that the prediction models are able to ascertain some phenotypic signal from the SNVs under study. That is, the SNVs used in the prediction models have some predictive power in differentiating those with high LVMi versus those with low LVMi. Moreover, siRF consistently yielded the highest predictive power across the various binarization thresholds and prediction metrics (with one exception being the classification accuracy for the 15\% binarization threshold, where ridge is slightly better than siRF). From this, we conclude that siRF passed the prediction check and will proceed to interpret the siRF fit to recommend and prioritize interactions between genetic loci for downstream analyses and experiments.
+
+Beyond the validation prediction accuracies, we also provide the confusion matrices, ROC and precision-recall curves, and pair plots comparing the predicted responses across methods for additional post-hoc exploration.
+
+</div>
+
+```{r pred-results-binary, results = "asis"}
+
+# phenotype_header <- "\n\n## %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square} \n\n"
+summary_header <- "\n\n## %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}\n\n"
+thr_header <- "\n\n## Binarization Threshold = %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}\n\n"
+section_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+subsection_header <- "\n\n#### %s {.unnumbered} \n\n"
+
+methods <- c("Lasso" = "lasso", "Ridge" = "ridge", "RF" = "rf", "siRF" = "irf", "SVM" = "svm")
+
+AUC_HEIGHT <- 5
+
+if (params$eval) {
+  for (phenotype in phenotypes) {
+    eval_ls <- list()
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    for (thr in c(0.15, 0.2, 0.25)) {
+      fpath <- file.path(res_dir, paste0(
+        phenotype, "_binary_thr", thr,
+        "_gwas_filtered_nsnps1000"
+      ))
+      # read in prediction results
+      load(file.path(fpath, "validation_pheno.Rdata")) # > pheno
+      preds_data <- list(
+        yhat = c(
+          readRDS(file.path(fpath, "ypred.rds")),
+          fread(file.path(fpath, "ypred.csv"))
+        ),
+        y = pheno,
+        Gender = ifelse(
+          loadDemographics(names(pheno))[, "gender"] == 1,
+          "Male", "Female"
+        ) %>% as.factor()
+      )
+
+      preds_data$yhat <- preds_data$yhat[methods]
+      names(preds_data$yhat) <- names(methods)
+
+      # prediction accuracy table
+      metrics <- c("Class", "AUC", "PR")
+      eval_out <- map_dfr(preds_data$yhat,
+        ~ bind_rows(
+          evalPreds(
+            y = preds_data$y, yhat = c(.x),
+            metric = c("AUC", "PR")
+          ),
+          evalPreds(
+            y = preds_data$y,
+            yhat = round(c(.x)),
+            metric = c("BalancedClass", "Class")
+          )
+        ),
+        .id = "Method"
+      ) %>%
+        spread(key = "Metric", value = "Value")
+      eval_ls[[as.character(thr)]] <- eval_out
+
+      # confusion matrix
+      conf_all <- map(
+        preds_data$yhat,
+        ~ evalConfusion(y = preds_data$y, yhat = .x)
+      ) %>%
+        purrr::reduce(., cbind)
+      conf_names <- colnames(conf_all) %>%
+        stringr::str_replace("0", "Low") %>%
+        stringr::str_replace("1", "High")
+      colnames(conf_all) <- paste(conf_names, 1:ncol(conf_all))
+      rownames(conf_all) <- rownames(conf_all) %>%
+        stringr::str_replace("0", "Low") %>%
+        stringr::str_replace("1", "High")
+      conf_header <- c(1, rep(2, length(preds_data$yhat))) %>%
+        setNames(c(" ", names(preds_data$yhat)))
+      tab <- pretty_DT(conf_all,
+        rownames = TRUE,
+        grouped_header = conf_header,
+        grouped_subheader = c(" ", conf_names),
+        options = list(dom = "t", ordering = FALSE)
+      )
+      saveRDS(
+        tab,
+        file.path(
+          tab_res_dir,
+          paste0(phenotype, "_thr", thr, "_confusion_matrix.rds")
+        )
+      )
+
+      # auc/pr plots
+      roc_ls <- map(
+        preds_data$yhat,
+        ~ evalAUC(y = preds_data$y, yhat = .x, metric = "roc")
+      )
+      pr_ls <- map(
+        preds_data$yhat,
+        ~ evalAUC(y = preds_data$y, yhat = .x, metric = "pr")
+      )
+
+      # drop models with constant predictions
+      roc_ls <- roc_ls[!sapply(roc_ls, is.null)]
+      pr_ls <- pr_ls[!sapply(pr_ls, is.null)]
+
+      # get curves
+      roc_df <- map_dfr(roc_ls,
+        ~ data.frame(.x$curve) %>%
+          mutate(AUC = round(.x$auc, 3)),
+        .id = "Method"
+      ) %>%
+        mutate(Method = as.factor(paste(Method, " (", AUC, ")", sep = "")))
+      pr_df <- map_dfr(pr_ls,
+        ~ data.frame(.x$curve) %>%
+          mutate(AUC = round(.x$auc.integral, 3)),
+        .id = "Method"
+      ) %>%
+        mutate(Method = as.factor(paste(Method, " (", AUC, ")", sep = "")))
+
+      # make plots
+      roc_plt <- ggplot(roc_df) +
+        aes(x = X1, y = X2, color = Method) +
+        geom_line() +
+        labs(x = "FPR", y = "TPR") +
+        vthemes::theme_vmodern() +
+        vthemes::scale_color_vmodern(discrete = TRUE)
+      saveRDS(
+        roc_plt,
+        file.path(
+          fig_res_dir,
+          paste0(phenotype, "_thr", thr, "_roc.rds")
+        )
+      )
+
+      pr_plt <- ggplot(pr_df) +
+        aes(x = X1, y = X2, color = Method) +
+        geom_line() +
+        labs(x = "Recall", y = "Precision") +
+        vthemes::theme_vmodern() +
+        vthemes::scale_color_vmodern(discrete = TRUE)
+      saveRDS(
+        pr_plt,
+        file.path(
+          fig_res_dir,
+          paste0(phenotype, "_thr", thr, "_pr.rds")
+        )
+      )
+
+      # prediction pair plots
+      plt_df <- map_dfc(preds_data$yhat, ~ c(.x))
+      plt <- plot_pairs(data = plt_df, columns = 1:ncol(plt_df))
+      saveRDS(
+        plt,
+        file.path(
+          fig_res_dir,
+          paste0(
+            phenotype, "_thr", thr,
+            "_pred_pair_plot.rds"
+          )
+        )
+      )
+    }
+
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    tab <- dplyr::bind_rows(eval_ls, .id = "Threshold") %>%
+      dplyr::rename("Accuracy" = "Class", "AUROC" = "AUC", "AUPRC" = "PR") %>%
+      dplyr::mutate(Threshold = paste0("Binarization Threshold = ", Threshold)) %>%
+      dplyr::select(Threshold, Method, Accuracy, AUROC, AUPRC) %>%
+      dplyr::group_by(Threshold) %>%
+      dplyr::mutate(dplyr::across(
+        c(Accuracy, AUROC, AUPRC),
+        ~ ifelse(.x == max(.x),
+          kableExtra::cell_spec(
+            formatC(.x,
+              digits = 3,
+              format = "g", flag = "#"
+            ),
+            bold = TRUE
+          ),
+          formatC(.x,
+            digits = 3,
+            format = "g", flag = "#"
+          )
+        )
+      )) %>%
+      tidyr::pivot_longer(
+        cols = c(Accuracy, AUROC, AUPRC), 
+        names_to = "Metric", 
+        values_to = "Value"
+      ) %>%
+      tidyr::pivot_wider(
+        id_cols = Method, 
+        names_from = c(Threshold, Metric), 
+        values_from = Value
+      ) %>%
+      vthemes::pretty_DT(
+        digits = 3, sigfig = FALSE, rownames = FALSE, na_disp = "--",
+        grouped_header = c(
+          " " = 1,
+          "Binarization Threshold = 0.15" = 3,
+          "Binarization Threshold = 0.20" = 3,
+          "Binarization Threshold = 0.25" = 3
+        ),
+        grouped_subheader = c(
+          "Method", rep(c("Accuracy", "AUROC", "AUPRC"), times = 3)
+        ),
+        options = list(dom = "t")
+      )
+    saveRDS(
+      tab,
+      file.path(tab_res_dir, paste0(phenotype, "_binary_pred_accuracy.rds"))
+    )
+  }
+} else {
+  for (phenotype in phenotypes) {
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    # cat(sprintf(phenotype_header, phenotype_name))
+
+    # summary table of prediction accuracies
+    cat(sprintf(summary_header, "Prediction Accuracy Summary"))
+    tab <- readRDS(
+      file.path(tab_res_dir, paste0(phenotype, "_binary_pred_accuracy.rds"))
+    )
+    subchunkify(tab,
+      i = chunk_idx,
+      caption = sprintf("'Summary of prediction performance on the validation set for the binarized %s phenotype across various prediction methods, binarization thresholds, and evaluation metrics.'", phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+
+    for (thr in c(0.15, 0.2, 0.25)) {
+      cat(sprintf(thr_header, thr))
+
+      # confusion matrix
+      cat(sprintf(section_header, "Confusion Tables"))
+      tab <- readRDS(file.path(
+        tab_res_dir,
+        paste0(
+          phenotype, "_thr", thr,
+          "_confusion_matrix.rds"
+        )
+      ))
+      subchunkify(tab,
+        i = chunk_idx,
+        caption = sprintf("'Confusion matrix from various prediction models for predicting the binarized %s phenotype (binarization threshold = %s).'", phenotype_name, thr)
+      )
+      chunk_idx <- chunk_idx + 1
+
+      # auc/pr plots
+      cat(sprintf(section_header, "ROC/PR Curves"))
+      plt <- readRDS(file.path(
+        fig_res_dir,
+        paste0(phenotype, "_thr", thr, "_roc.rds")
+      ))
+      subchunkify(ggplotly(plt),
+        i = chunk_idx, fig_height = AUC_HEIGHT,
+        add_class = c("panel panel-default padded-panel"),
+        other_args = "out.width='100%'",
+        caption = sprintf("'ROC curve for predicting the binarized %s (threshold = %s) across various prediction methods. TPR = true positive rate; FPR = false positive rate.'", phenotype_name, thr)
+      )
+      chunk_idx <- chunk_idx + 1
+
+      plt <- readRDS(file.path(
+        fig_res_dir,
+        paste0(phenotype, "_thr", thr, "_pr.rds")
+      ))
+      subchunkify(ggplotly(plt),
+        i = chunk_idx, fig_height = AUC_HEIGHT,
+        add_class = c("panel panel-default padded-panel"),
+        other_args = "out.width='100%'",
+        caption = sprintf("'Precision-recall curve for predicting the binarized %s (threshold = %s) across various prediction methods.'", phenotype_name, thr)
+      )
+      chunk_idx <- chunk_idx + 1
+
+      # prediction pair plots
+      cat(sprintf(section_header, "Prediction Pair Plot"))
+      plt <- readRDS(file.path(
+        fig_res_dir,
+        paste0(
+          phenotype, "_thr", thr,
+          "_pred_pair_plot.rds"
+        )
+      ))
+      subchunkify(plt,
+        i = chunk_idx, fig_height = plt$ncol * 1.5,
+        add_class = c("panel panel-default"),
+        other_args = "out.width='100%'",
+        caption = sprintf("'Pair plots of the predicted binarized %s responses (threshold = %s) across various prediction methods. Each point represents an individual in the validation set, and the coordinates represent the predicted probability of having high %s from two different prediction methods, which are specified by the x and y-axes labels in each subplot. Density distributions of the predicted probabilities are shown along the diagonal.'", phenotype_name, thr, phenotype_name)
+      )
+      chunk_idx <- chunk_idx + 1
+    }
+  }
+}
+```
+
+
+# Prioritization Step {.tabset .tabset-fade .tabset-vmodern}
+
+## Overview {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+Having passed the prediction check, we finally proceed to interpret the siRF fit in the last step of lo-siRF. In this step, we developed a novel stability-driven feature importance score to prioritize both genetic loci and interactions between genetic loci from siRF. We refer to [@wang2023epistasis]() for the detailed description of this new importance score and here provide brief insights into the motivation and intuition behind this method.
+
+**Main idea:** At a high-level, this new importance score (1) aggregates weak, unstable SNV-level importances from siRF into stronger, more stable locus-level importances and (2) can be leveraged to evaluate both the marginal importance of a genetic locus in siRF as well as the importance of higher-order interactions between genetic loci in siRF. The need for this locus-level feature importance score stems from two main reasons: the high correlation between SNVs and the weak phenotypic signal. Though the prediction models (including siRF) are all trained using SNV data, it is often very challenging to interpret the importance of an individual SNV from these models due to the high correlation between SNVs [@tolocsi2011classification; @hooker2021unrestricted], which we observed in our previous exploratory data analysis (see `Choice of Phenotypic Data` tab). To further complicate matters, the weak phenotypic signal increases the instability of existing feature importance methods in that we see the feature rankings change drastically when using different bootstrap training samples. Given these challenges with SNV-level feature importances, it is then no surprise that siRF, out-of-the-box, does not find any stable interactions between SNVs (i.e., the siRF stability score is around 0 for all interactions between SNVs). To address these challenges, our new feature importance score leverages the correlation structure between SNVs, groups SNVs into genetic loci, and aggregates weak, unstable SNV-level importances from siRF into stronger, more stable locus-level importances.
+
+**Motivation behind new feature importance score:** To better understand the motivation and construction of our new locus-level feature importance score, it can be helpful to first review the original importance score used in siRF [@kumbier2018refining]. Briefly, in the original version of siRF, the importance of a signed interaction is based upon *how stable or frequently it occurs* in decisions paths across the random forest -- that is, based upon the number of decision paths for which every signed feature in the signed interaction was used in at least one decision split (see @kumbier2018refining for details). Following a similar logic, one natural path forward to calculate a locus-level importance from a forest that was fit on SNV data is as follows:
+
+1. Take the fitted forest, where each decision split used some SNV to make the split.
+2. Map each SNV used in a decision split to its corresponding genetic loci (e.g., using annotation software like ANNOVAR [@wang2010annovar]).
+3. Compute the importance of a signed locus-level interaction based upon the frequency of occurrence of the interaction as before, but using the mapped genetic loci in lieu of the SNVs. That is, compute the number of decision paths for which every signed locus in the signed locus-level interaction was used in at least one decision split. 
+
+However, this *frequency of occurrence* measure is heavily tied to the number of SNVs that belong to each genetic locus. A genetic locus that consists of more SNVs will naturally have a higher frequency of occurrence than a genetic locus with only a few SNVs even though both genetic loci may be equally important (or unimportant). In other words, the original siRF importance score, measuring the frequency of occurrence, is not comparable across genetic loci. This bias is problematic given that we have previously seen some genetic loci may consist of only 1 SNV while other genetic loci have >50 SNVs (see `GWAS-filtered SNVs` tab in the Dimension Reduction Step). 
+
+**Intuition behind new feature importance score:** To alleviate this bias, we leverage the idea of a *local* feature importance score, where we compute a *per-individual* score that measures the importance of a locus/interaction for making the prediction of *each* individual. This is in contrast to a *global* feature importance score, which is a measure of importance for the entire group of individuals under study. While a global feature importance score gives rise to a *single* score for the entire population under study, we can compute a local feature importance score for *each* individual in the population. By computing a local feature importance score for each individual (i.e., this is the local stability importance (LSI) score from [@wang2023epistasis]()), we can compare the importance of the locus/interaction across *individuals* and avoid the across-*loci* comparison that was problematic in the aforementioned discussion. This comparison is done via a permutation test in [@wang2023epistasis](). Moreover, since we are comparing the local feature importances between individuals *within* or *per* loci/interaction in this permutation test, the local feature importances are all measured on the same scale and comparable, thereby mitigating the bias towards genetic loci with more SNVs.
+
+**How to aggregate SNVs:** We mapped each SNV to its corresponding genetic locus using ANNOVAR [@wang2010annovar] according to the hg19 refSeq Gene annotations. Given our ultimate goal of recommending/prioritizing genetic loci and interactions between loci for downstream analyses and experimental validation, we believe this choice provides an appropriate starting point to obtain actionable recommendations. However, we note that there are many alternative ways of aggregating SNVs. For example, it is possible to aggregate SNVs according to LD/haplotype blocks or to include additional gene-based or functional annotations in the aggregation scheme.
+
+**Organization:** Under the `SNV-level Importances` tab, we provide the SNV-level feature importances from the fitted prediction algorithms (described in the `Prediction Step` section) for completeness. These SNV-level feature importances are very unstable across methods and across bootstrap perturbations for the reasons discussed above. We then summarize the results from the lo-siRF pipeline including the rankings of genetic loci and interaction between genetic loci using our new locus-level importance score under the `Summary of lo-siRF Results` tab. A final technical note on the advantages of incorporating signed information from siRF in this feature importance computation is provided under the `Advantages of Signed Information` tab.
+
+</div>
+
+## SNV-level Feature Importances {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+Having observed that the aforementioned classification algorithms do have some predictive power to predict those with high versus low LVMi, a natural next step is to investigate which SNVs were used in these prediction models. Below, we highlight the top 100 SNVs, ranked by importance in each of the prediction models. For completeness, we provide the SNV importances for the unbinarized LVMi (regression) problem as well as the binarized LVMi (classification) problem across the three different binarization thresholds.
+
+**How is importance defined?**
+
+- For ridge and Lasso, the importance of an SNV is defined as the magnitude of its coefficient in the prediction model.
+- For RF, the importance of an SNV is determined by the mean decrease in impurity (MDI) score.
+- For siRF, the importance of an SNV is determined by the MDI from the forest in the final iteration.
+- Due to the computational complexity, we did not compute the SNV importances from the SVM fit as there is no built-in model-based feature importance method (in R), and any permutation-based approach would be computationally expensive.
+
+**A word of caution:** When interpreting these SNV importances, it is crucial to keep in mind that there are very large, strongly correlated blocks of SNVs within this data, which often renders the feature rankings unmeaningful and unstable [@tolocsi2011classification; @hooker2021unrestricted]. In particular, it is well-known that the MDI variable importance metric used in RF/iRF/siRF is biased against correlated features [@hooker2021unrestricted]. In other words, SNVs within large LD blocks tend to have artificially low MDI values. Given these idiosyncrasies, it is unsurprising that SNVs from TTN and CCDC141 -- two genetic loci with many SNVs under LD -- do not have high importances according to MDI. We provide these SNV importance tables only for completeness and to partially motivate the need to aggregate SNV-level importances into locus-level importances in lo-siRF.
+
+</div>
+
+
+```{r vimp, results = "asis"}
+
+# phenotype_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+thr_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle}"
+method_header <- "\n\n#### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+subsection_header <- "\n\n##### %s {.unnumbered}\n\n"
+
+methods <- c("Lasso" = "lasso", "Ridge" = "ridge", "RF" = "rf", "siRF" = "irf")
+
+if (params$eval) {
+  snps_df <- fread(file.path(res_dir, "annovar", "snp2gene_df.csv"))
+  for (phenotype in phenotypes) {
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    for (thr in c(NA, 0.15, 0.2, 0.25)) {
+      if (is.na(thr)) {
+        fpath <- file.path(res_dir, paste0(phenotype, "_gwas_filtered_nsnps1000"))
+      } else {
+        fpath <- file.path(res_dir, paste0(
+          phenotype, "_binary_thr", thr,
+          "_gwas_filtered_nsnps1000"
+        ))
+      }
+      for (method in methods) {
+        vimp_out <- evalVimp(
+          res_dir = fpath, 
+          method = method, 
+          snps_df = snps_df
+        ) %>%
+          dplyr::filter(!stringr::str_detect(Gene, "PC[0-9]*$")) %>%
+          dplyr::slice(1:100) %>%
+          dplyr::mutate(
+            Alleles = purrr::map2(Ref, Alt, ~ sort(c(.x, .y))),
+            Allele1 = purrr::map_chr(Alleles, ~ .x[[1]]),
+            Allele2 = purrr::map_chr(Alleles, ~ .x[[2]]),
+            uniqID = paste(Chr, Pos, Allele1, Allele2, sep = ":")
+          ) %>%
+          dplyr::select(
+            Chr, rsID, Pos, uniqID,
+            Locus = Gene, Function = `Gene Function`,
+            `Exonic Function`, Importance
+          )
+        if (!is.null(vimp_out)) {
+          tab <- pretty_DT(vimp_out, digits = 3, sigfig = T, na_disp = "--")
+          saveRDS(
+            tab,
+            file.path(
+              tab_res_dir,
+              paste0(
+                phenotype, "_thr", thr, "_", method,
+                "_vimp.rds"
+              )
+            )
+          )
+        }
+      }
+    }
+  }
+} else {
+  for (phenotype in phenotypes) {
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    # cat(sprintf(phenotype_header, phenotype_name))
+    for (thr in c(NA, 0.15, 0.2, 0.25)) {
+      if (is.na(thr)) {
+        cat(sprintf(thr_header, "Unbinarized (Regression)"))
+        fpath <- file.path(res_dir, paste0(phenotype, "_gwas_filtered_nsnps1000"))
+        phenotype_str <- sprintf("%s", phenotype_name)
+      } else {
+        cat(sprintf(thr_header, paste0("Binarization Threshold = ", thr)))
+        fpath <- file.path(res_dir, paste0(
+          phenotype, "_binary_thr", thr,
+          "_gwas_filtered_nsnps1000"
+        ))
+        phenotype_str <- sprintf(
+          "the binarized %s (threshold = %s)", phenotype_name, thr
+        )
+      }
+      for (i in 1:length(methods)) {
+        method <- methods[[i]]
+        method_name <- names(methods)[i]
+        cat(sprintf(method_header, method_name))
+        tmp_file <- file.path(
+          tab_res_dir,
+          paste0(
+            phenotype, "_thr", thr, "_", method,
+            "_vimp.rds"
+          )
+        )
+        if (file.exists(tmp_file)) {
+          tab <- readRDS(tmp_file)
+          subchunkify(tab,
+            i = chunk_idx,
+            other_args = "out.width='100%'",
+            caption = sprintf(
+              "'%s - Top 100 SNVs, ranked by importance, for predicting %s.'",
+              method_name, phenotype_str
+            )
+          )
+          chunk_idx <- chunk_idx + 1
+        }
+      }
+    }
+  }
+}
+```
+
+## Summary of lo-siRF Results {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+Finally, we summarize the prioritization results from the lo-siRF pipeline using our new importance score to rank genetic loci and interactions between genetic loci. In this new importance score, we (1) computed a local (i.e., on a per-individual basis) stability importance score that aggregates weak SNV-level importances into stronger locus-level importances using the siRF fit and (2) conducted a permutation test to assess whether the local stability importance scores for a given locus/interaction are different between individuals with high and low LVMi (conditioned on the rest of the fitted forest). The larger the difference in local stability importance scores between those with high versus low LVMi, the greater the importance of the locus/interaction for predicting LVMi. For details on the new importance score, we refer to [@wang2023epistasis]().
+
+Below, we recap the siRF prediction accuracy for predicting the binarized LVMi across the three binarization thresholds (15\%, 20\%, 25\%) (Figure \@ref(fig:subchunk-58)). Then, in Figure \@ref(fig:subchunk-59), we summarize the prioritization rankings of genetic loci and interaction between loci according to the new importance score. We provide the permutation p-values along with the permutation test statistic, that is, the difference in local feature stability scores between the high and low LVMi groups, with the standard deviation of this permutation distribution in parentheses. 
+
+Note that the permutation test was not performed for all loci/interactions (details in [@wang2023epistasis]()). Given our primary aim of generating reliable hypotheses for follow-up experimental validation, we chose to only test loci/interactions that were *predictive* and *stable* in the siRF fit, following the PCS framework for veridical data science [@yu2020veridical]. Specifically, for each binarization threshold, we only tested:
+
+- the top 25 loci with the highest average local stability importance scores, or in other words, those that occurred most stably/frequently (and thus likely predictive) in the siRF fit, and
+- the interactions between loci that were identified by siRF and achieved a stability score > 0.5, stability score for mean increase in precision > 0, and stability score for independence of feature selection > 0. We note that in addition to the explicit stability checks here, the requirement on the mean increase in precision serves as a predictability check, and the requirement on the independence of feature selection serves to differentiate marginal additive effects from non-additive interaction effects (see @kumbier2018refining for details).
+
+By implementing this additional predictability and stability check, we are requiring that the prioritized loci/interactions meet a higher standard, with the hope that this ultimately generates more reliable (albeit more conservative) experimental recommendations.
+
+In addition to the provided summary of results,
+
+- Under the `siRF Interaction Table` tab, we provide the full siRF locus-level interaction table output for each binarization threshold (Figures \@ref(fig:subchunk-60), \@ref(fig:subchunk-62), and \@ref(fig:subchunk-64)). This table includes several metrics for evaluating the stability and strength of the interaction. For details on these metrics, we refer to @kumbier2018refining.
+  - For comparison, we also provide the analogous siRF output for interactions at the SNV level (Figures \@ref(fig:subchunk-61), \@ref(fig:subchunk-63), and \@ref(fig:subchunk-65)). Here, we see that if we do not perform the SNV-to-locus aggregation, the stability scores for the SNV-level interactions are very close to 0. This means that the siRF-identified SNV-level interactions rarely appear when siRF is refitted using different bootstrapped training samples. As discussed previously, this instability is partially due to the correlation among SNVs and the weak phenotypic signal. This high instability also motivates the need for an alternative approach via our new importance score.
+- Under the `Local Stability Importance Plots - Interactions` and `Local Stability Importance Plots - Loci`, we provide visualizations of the density distribution of local stability importance scores between the low and high LVMi groups as well as the frequency distribution of SNVs used in the siRF fit (i.e., which SNVs occurred most frequently in the decision paths across the siRF fit).
+  - In the density distribution of local stability importance scores, observable differences between the low and high LVMi groups are evidence that the genetic locus or interaction between loci is important for differentiating between individuals with high versus low LVMi. The larger the difference, the greater the importance of the locus or interaction between loci.
+  - In the SNV frequency distributions, we show the frequency of occurrence for each SNV or SNV pair in the siRF fit. This is the number of decision paths for which the SNV or SNV pair appeared in the siRF fit. SNVs or SNV pairs with the highest number of occurrences in the RF decision paths (y-axis) contributed the most to the overall locus/interaction's importance in the siRF fit.
+
+</div>
+
+
+```{r irf-results, results = "asis"}
+
+# phenotype_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+section_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+thr_header <- "\n\n#### %s {.unnumbered .tabset .tabset-pills .tabset-fade} \n\n"
+# subsection_header <- "\n\n##### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+# subsubsection_header <- "\n\n####### %s {.unnumbered} \n\n"
+
+DIST_HEIGHT <- 8
+HEATMAP_HEIGHT <- 8
+EPI_HEIGHT <- 8
+ITER <- 3
+LEFT_MARGIN <- 5
+
+if (params$eval) {
+  for (phenotype in phenotypes) {
+    print(phenotype)
+    eval_ls <- list()
+    int_results_ls <- list()
+    gene_results_ls <- list()
+    for (thr in c(0.15, 0.2, 0.25)) {
+      print(thr)
+      fpath <- file.path(res_dir, paste0(
+        phenotype, "_binary_thr", thr,
+        "_gwas_filtered_nsnps1000"
+      ))
+      # > out, yhat_tr2, yhat_va, irf_gene_out, snps.df, irf_snv_int_out
+      load(file.path(fpath, "irf_interaction_fit.Rdata"))
+      y_test <- ifelse(out$pheno_test == 0, "Low LVMi", "High LVMi")
+
+      # prediction results
+      eval_out <- bind_rows(
+        evalPreds(y = out$pheno_test, yhat = yhat_va, metric = c("AUC", "PR")),
+        evalPreds(y = out$pheno_test, yhat = round(yhat_va), metric = c("Class"))
+      ) %>%
+        spread(key = "Metric", value = "Value")
+      eval_ls[[as.character(thr)]] <- eval_out
+
+      # local interaction stability results
+      load(file.path(fpath, "local_interaction_stability_results.Rdata"))
+      int_out <- list(
+        stab_tr2_ls = int_stab_tr2_ls,
+        stab_va_ls = int_stab_va_ls,
+        test_ints_ls = test_ints_ls,
+        perm_out_ls = int_perm_out_ls
+      )
+      int_results_ls[[as.character(thr)]] <- int_perm_out_ls
+
+      int_all_out <- list(`Using all splits` = int_out)
+
+      pval_int <- map_dfr(int_out$perm_out_ls[[ITER]],
+        function(x) {
+          data.frame(
+            pval = x$pval,
+            check.names = FALSE
+          )
+        },
+        .id = "int"
+      ) %>%
+        dplyr::mutate(
+          pval_str = dplyr::case_when(
+            pval < 1e-4 ~ "< 10<sup>-4</sup>",
+            pval < 1e-3 ~ "< 10<sup>-3</sup>",
+            TRUE ~ sprintf("%s", formatC(pval, digits = 3, format = "f"))
+          )
+        )
+
+      style_names_basic <- function(x, italic = TRUE) {
+        x <- x %>%
+          stringr::str_replace_all("-_", "<sup>&#8211;</sup>&#8211;") %>%
+          stringr::str_replace_all("\\+_", "<sup>+</sup>&#8211;") %>%
+          stringr::str_replace_all("-$", "<sup>&#8211;</sup>") %>%
+          stringr::str_replace_all("\\+$", "<sup>+</sup>") %>%
+          kableExtra::cell_spec(escape = FALSE, italic = italic)
+        return(x)
+      }
+
+      # iRF results
+      tab_out <- irf_gene_out$interaction[[ITER]] %>%
+        left_join(y = pval_int, by = "int") %>%
+        dplyr::arrange(pval) %>%
+        dplyr::select(-pval) %>%
+        dplyr::rename(
+          "Interaction" = "int",
+          "Prevalence" = "prevalence",
+          "Precision" = "precision",
+          "Class Difference in Prevalence" = "cpe",
+          "Stability of Class Difference in Prevalence" = "sta.cpe",
+          "Independence of Feature Selection" = "fsd",
+          "Stability of Independence of Feature Selection" = "sta.fsd",
+          "Increase in Precision" = "mip",
+          "Stability of Increase in Precision" = "sta.mip",
+          "Stability" = "stability",
+          "lo-siRF Mean Permutation p-value" = "pval_str"
+        ) %>%
+        dplyr::mutate(Interaction = style_names_basic(Interaction))
+      tab <- pretty_DT(tab_out,
+        digits = 3, sigfig = TRUE, rownames = FALSE,
+        na_disp = "--"
+      )
+      saveRDS(
+        tab,
+        file.path(
+          tab_res_dir,
+          paste0(
+            phenotype, "_thr", thr,
+            "_irf_interaction_results.rds"
+          )
+        )
+      )
+
+      # iRF results - SNV level
+      tab_out <- irf_snv_int_out %>%
+        dplyr::mutate(int = stringr::str_remove_all(int, "[0-9]*ch")) %>%
+        dplyr::arrange(-stability) %>%
+        dplyr::rename(
+          "Interaction" = "int",
+          "Prevalence" = "prevalence",
+          "Precision" = "precision",
+          "Class Difference in Prevalence" = "cpe",
+          "Stability of Class Difference in Prevalence" = "sta.cpe",
+          "Independence of Feature Selection" = "fsd",
+          "Stability of Independence of Feature Selection" = "sta.fsd",
+          "Increase in Precision" = "mip",
+          "Stability of Increase in Precision" = "sta.mip",
+          "Stability" = "stability"
+        ) %>%
+        dplyr::mutate(
+          Interaction = style_names_basic(Interaction, italic = FALSE)
+        )
+      tab <- pretty_DT(tab_out, digits = 3, sigfig = TRUE, rownames = FALSE)
+      saveRDS(
+        tab,
+        file.path(
+          tab_res_dir,
+          paste0(
+            phenotype, "_thr", thr,
+            "_irf_snv_interaction_results.rds"
+          )
+        )
+      )
+
+      for (type in names(int_all_out)) {
+        print(type)
+        # heatmap
+        plt <- plot_hclust_heatmap(int_all_out[[type]]$stab_va_ls[[ITER]],
+          y_groups = y_test,
+          clust_y_wi_group = FALSE
+        ) +
+          labs(
+            x = "Interaction", y = "Patients",
+            fill = "Local\nStability\nScore"
+          ) +
+          vthemes::theme_vmodern(size_preset = "medium") +
+          theme(
+            axis.text.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
+          )
+        saveRDS(
+          plt,
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_int_local_stability_heatmap_", type, ".rds"
+            )
+          )
+        )
+
+        # distribution plots
+        int_pvals <- map_dfr(int_all_out[[type]]$perm_out_ls[[ITER]],
+          ~ data.frame(pval = .x$pval),
+          .id = "int"
+        ) %>%
+          arrange(pval) %>%
+          dplyr::mutate(
+            pval_str = dplyr::case_when(
+              pval < 1e-4 ~ "p < 10^-4",
+              pval < 1e-3 ~ "p < 10^-3",
+              # pval < 1e-4 ~ "p < 10<sup>-4</sup>",
+              # pval < 1e-3 ~ "p < 10<sup>-3</sup>",
+              TRUE ~ sprintf("p~`=`~%s", formatC(pval, digits = 3, format = "f"))
+            )
+          ) %>%
+          mutate(int_pval = sprintf("%s (%s)", int, pval_str))
+        plt_df <- int_all_out[[type]]$stab_va_ls[[ITER]] %>%
+          bind_cols(y = y_test) %>%
+          gather(key = "int", value = "Stability", -y) %>%
+          left_join(y = int_pvals, by = "int") %>%
+          # mutate(int = paste0(int, " (p = ", formatC(pval, 3, format = "g"), ")")) %>%
+          mutate(int = factor(int, levels = int_pvals$int))
+        plt <- plot_density(data = plt_df, x_str = "Stability", fill_str = "y") +
+          facet_wrap(~int, scales = "free", ncol = 3) +
+          ggplot2::labs(x = "Local Stability Importance Score", fill = "") +
+          ggplot2::geom_text(
+            ggplot2::aes(x = Inf, y = Inf, hjust = 1.1, vjust = 1.5, label = pval_str),
+            data = plt_df %>% dplyr::distinct(int, .keep_all = TRUE),
+            parse = TRUE
+          ) +
+          ggplot2::theme(axis.title = ggplot2::element_text(size = 14))
+        saveRDS(
+          plt,
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_int_local_stability_dist_", type, ".rds"
+            )
+          )
+        )
+
+        # individual snp plots
+        plt <- plotRFSnpIntDist(
+          irf_gene_out$rf.list[[ITER]], snps.df, int_pvals$int # , prop = TRUE
+        ) +
+          ggplot2::labs(x = "SNV-SNV Pair")
+        saveRDS(
+          plt,
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_int_local_stability_snp_dist_", type, ".rds"
+            )
+          )
+        )
+      }
+
+      # local feature stability results
+      load(file.path(fpath, "local_feature_stability_results.Rdata"))
+      stab_out <- list(
+        stab_tr2_ls = stab_tr2_ls,
+        stab_va_ls = stab_va_ls,
+        test_genes_ls = test_genes_ls,
+        perm_out_ls = perm_out_ls
+      )
+      gene_results_ls[[as.character(thr)]] <- perm_out_ls
+
+      stab_all_out <- list(`Using all splits` = stab_out)
+
+      for (type in names(int_all_out)) {
+        print(type)
+        stab_df <- stab_all_out[[type]]$stab_va_ls[[ITER]] %>%
+          select(all_of(stab_all_out[[type]]$test_genes_ls[[ITER]]))
+
+        # heatmap
+        plt <- plot_hclust_heatmap(stab_df,
+          y_groups = y_test,
+          clust_y_wi_group = FALSE
+        ) +
+          labs(
+            x = "Feature", y = "Patients",
+            fill = "Local\nStability\nScore"
+          ) +
+          vthemes::theme_vmodern(size_preset = "medium") +
+          theme(
+            axis.text.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
+          )
+        saveRDS(
+          plt,
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_local_stability_heatmap_", type, ".rds"
+            )
+          )
+        )
+
+        # distribution plots
+        ft_pvals <- map_dfr(stab_all_out[[type]]$perm_out_ls[[ITER]],
+          ~ data.frame(pval = .x$pval),
+          .id = "feature"
+        ) %>%
+          arrange(pval) %>%
+          dplyr::mutate(
+            pval_str = dplyr::case_when(
+              pval < 1e-4 ~ "p < 10^-4",
+              pval < 1e-3 ~ "p < 10^-3",
+              # pval < 1e-4 ~ "p < 10<sup>-4</sup>",
+              # pval < 1e-3 ~ "p < 10<sup>-3</sup>",
+              TRUE ~ sprintf("p~`=`~%s", formatC(pval, digits = 3, format = "f"))
+            )
+          ) %>%
+          mutate(
+            ft_pval = paste0(feature, " (p = ", formatC(pval, 3, format = "g"), ")")
+          )
+        plt_df <- stab_df %>%
+          bind_cols(y = y_test) %>%
+          gather(key = "feature", value = "Stability", -y) %>%
+          left_join(y = ft_pvals, by = "feature") %>%
+          # mutate(feature = paste0(feature, " (p = ", formatC(pval, 3, format = "g"), ")")) %>%
+          mutate(feature = factor(feature, levels = ft_pvals$feature))
+        plt <- plot_density(data = plt_df, x_str = "Stability", fill_str = "y") +
+          facet_wrap(~feature, scales = "free", ncol = 4) +
+          ggplot2::labs(x = "Local Stability Importance Score", fill = "") +
+          ggplot2::geom_text(
+            ggplot2::aes(x = Inf, y = Inf, hjust = 1.1, vjust = 1.5, label = pval_str),
+            data = plt_df %>% dplyr::distinct(feature, .keep_all = TRUE),
+            parse = TRUE
+          ) +
+          ggplot2::theme(axis.title = ggplot2::element_text(size = 14))
+        saveRDS(
+          plt,
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_local_stability_dist_", type, ".rds"
+            )
+          )
+        )
+
+        # individual snp plots
+        plt <- plotRFSnpDist(
+          irf_gene_out$rf.list[[ITER]], snps.df, ft_pvals$feature # , prop = TRUE
+        ) +
+          ggplot2::labs(x = "SNV (Ordered by Position)")
+        saveRDS(
+          plt,
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_local_stability_snp_dist_", type, ".rds"
+            )
+          )
+        )
+      }
+    }
+
+    tab <- dplyr::bind_rows(eval_ls, .id = "Binarization Threshold") %>%
+      dplyr::rename("Accuracy" = "Class", "AUROC" = "AUC", "AUPRC" = "PR") %>%
+      dplyr::select(`Binarization Threshold`, Accuracy, AUROC, AUPRC) %>%
+      pretty_DT(
+        digits = 3, sigfig = FALSE, rownames = FALSE,
+        options = list(dom = "t", ordering = FALSE)
+      )
+    saveRDS(
+      tab,
+      file.path(
+        tab_res_dir,
+        paste0(phenotype, "_irf_prediction_results.rds")
+      )
+    )
+
+    gene_results_df <- purrr::map_dfr(
+      gene_results_ls,
+      function(gene_results) {
+        purrr::map_dfr(
+          gene_results[[ITER]],
+          ~ data.frame(
+            `Mean Difference (High - Low)` = formatC(.x$T_obs, digits = 2, format = "g"),
+            `SD` = formatC(sd(.x$perm_dist), digits = 2, format = "g"),
+            `p-value` = dplyr::case_when(
+              .x$pval < 1e-4 ~ "< 10<sup>-4</sup>",
+              .x$pval < 1e-3 ~ "< 10<sup>-3</sup>",
+              TRUE ~ formatC(.x$pval, digits = 3, format = "f")
+            ),
+            p = .x$pval,
+            check.names = FALSE
+          ),
+          .id = "Locus / Interaction"
+        )
+      },
+      .id = "Binarization Threshold"
+    )
+
+    int_results_df <- purrr::map_dfr(
+      int_results_ls,
+      function(int_results) {
+        purrr::map_dfr(
+          int_results[[ITER]],
+          ~ data.frame(
+            `Mean Difference (High - Low)` = formatC(.x$T_obs, digits = 2, format = "g"),
+            `SD` = formatC(sd(.x$perm_dist), digits = 2, format = "g"),
+            `p-value` = dplyr::case_when(
+              .x$pval < 1e-4 ~ "< 10<sup>-4</sup>",
+              .x$pval < 1e-3 ~ "< 10<sup>-3</sup>",
+              TRUE ~ formatC(.x$pval, digits = 3, format = "f")
+            ),
+            p = .x$pval,
+            check.names = FALSE
+          ),
+          .id = "Locus / Interaction"
+        )
+      },
+      .id = "Binarization Threshold"
+    )
+
+    style_names <- function(x) {
+      color_vec <- stringr::str_detect(x, "_")
+      x <- x %>%
+        stringr::str_replace_all("-_", "<sup>&#8211;</sup>&#8211;") %>%
+        stringr::str_replace_all("-$", "<sup>&#8211;</sup>") %>%
+        stringr::str_replace_all("\\+", "<sup>+</sup>")
+      x <- dplyr::case_when(
+        color_vec ~ kableExtra::cell_spec(
+          x,
+          color = "cornflowerblue", escape = FALSE, italic = TRUE
+        ),
+        TRUE ~ kableExtra::cell_spec(x, escape = FALSE, italic = TRUE)
+      )
+      return(x)
+    }
+
+    feature_order <- dplyr::bind_rows(gene_results_df, int_results_df) %>%
+      dplyr::group_by(`Locus / Interaction`) %>%
+      dplyr::summarise(
+        n = dplyr::n(),
+        mean = mean(p)
+      ) %>%
+      dplyr::arrange(-n, mean) %>%
+      dplyr::select(`Locus / Interaction`)
+
+    color_vec <- stringr::str_detect(feature_order$`Locus / Interaction`, "_")
+
+    results_df <- dplyr::bind_rows(gene_results_df, int_results_df) %>%
+      dplyr::mutate(
+        `Difference in Local Feature Stability (High - Low)` = sprintf("%s (%s)", `Mean Difference (High - Low)`, SD)
+      ) %>%
+      tidyr::pivot_wider(
+        id_cols = `Locus / Interaction`,
+        names_from = `Binarization Threshold`,
+        values_from = c(`Difference in Local Feature Stability (High - Low)`, `p-value`),
+        names_vary = "slowest"
+      ) %>%
+      dplyr::left_join(x = feature_order, y = ., by = "Locus / Interaction") %>%
+      dplyr::mutate(
+        `Locus / Interaction` = style_names(`Locus / Interaction`)
+      )
+    results_tab <- pretty_DT(
+      results_df,
+      na_disp = "--", rownames = FALSE,
+      grouped_header = c(
+        " " = 1, "Binarization Threshold = 0.15" = 2,
+        "Binarization Threshold = 0.20" = 2,
+        "Binarization Threshold = 0.25" = 2
+      ),
+      grouped_subheader = stringr::str_remove(colnames(results_df), "\\_[.0-9]+")
+    )
+    saveRDS(
+      results_tab,
+      file.path(
+        tab_res_dir,
+        paste0(phenotype, "_irf_pvalues_summary.rds")
+      )
+    )
+  }
+} else {
+  method_types <- c("Using all splits")
+  thrs <- c(0.15, 0.2, 0.25)
+  for (phenotype in phenotypes) {
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    # cat(sprintf(phenotype_header, phenotype_name))
+
+    cat(sprintf(section_header, "Summary"))
+    tab <- readRDS(file.path(
+      tab_res_dir,
+      paste0(phenotype, "_irf_prediction_results.rds")
+    ))
+    subchunkify(tab,
+      i = chunk_idx,
+      caption = sprintf("'Summary of the validation prediction performance from siRF across various %s binarization thresholds.'", phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+
+    tab <- readRDS(file.path(
+      tab_res_dir,
+      paste0(phenotype, "_irf_pvalues_summary.rds")
+    ))
+    subchunkify(tab,
+      i = chunk_idx,
+      caption = sprintf("'Summary of the lo-siRF permutation test results across various %s binarization thresholds including the test statistic (i.e., difference in local feature stability scores between the high and the low %s groups (SD in parentheses) and the resulting p-values. Blank cells indicate that the locus/interaction was not selected for testing for the given binarization threshold. Loci/interactions are ranked according to the mean p-value across all three binarization thresholds. Interactions between genetic loci are highlighted in blue.'", phenotype_name, phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+
+    cat(sprintf(section_header, "siRF Interaction Table"))
+    for (thr in thrs) {
+      cat(sprintf(thr_header, thr))
+      tab <- readRDS(file.path(
+        tab_res_dir,
+        paste0(
+          phenotype, "_thr", thr,
+          "_irf_interaction_results.rds"
+        )
+      ))
+      subchunkify(tab,
+        i = chunk_idx,
+        caption = sprintf("'Summary of the siRF locus-level interaction table output for the binarized %s phenotype (binarization threshold = %s). For all metrics excluding the lo-siRF mean permutation p-value, higher values indicate a stronger interaction. Details regarding these metrics in the siRF interaction table output can be found in Kumbier et al. (2018).'", phenotype_name, thr)
+      )
+      chunk_idx <- chunk_idx + 1
+      cat("\n\n")
+
+      tab <- readRDS(file.path(
+        tab_res_dir,
+        paste0(
+          phenotype, "_thr", thr,
+          "_irf_snv_interaction_results.rds"
+        )
+      ))
+      subchunkify(tab,
+        i = chunk_idx,
+        caption = sprintf("'Summary of the siRF SNV-level interaction table output for the binarized %s phenotype (binarization threshold = %s). Stability scores for all interactions are close to 0, suggesting unreliable SNV-level interactions. Details regarding these metrics in the siRF interaction table output can be found in Kumbier et al. (2018).'", phenotype_name, thr)
+      )
+      chunk_idx <- chunk_idx + 1
+      cat("\n\n")
+    }
+
+    cat(sprintf(section_header, "Local Stability Importance Plots - Interactions"))
+    for (thr in thrs) {
+      cat(sprintf(thr_header, thr))
+      for (type in method_types) {
+        # distribution plots
+        plt <- readRDS(
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_int_local_stability_dist_", type, ".rds"
+            )
+          )
+        )
+        nrows <- ceiling(nlevels(plt$data$int) / 3)
+        subchunkify(plt,
+          i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+          add_class = c("panel panel-default padded-panel"),
+          other_args = "out.width='100%'",
+          caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) for each signed interaction between loci (specified by subplot) that passed the siRF stability filter. The permutation test p-value, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name)
+        )
+        chunk_idx <- chunk_idx + 1
+        cat("\n\n")
+
+        # individual snp plots
+        plt <- readRDS(
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_int_local_stability_snp_dist_", type, ".rds"
+            )
+          )
+        )
+        nrows <- ceiling(length(unique(plt$data$Genes)) / 3)
+        subchunkify(ggplotly(plt),
+          i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+          add_class = c("panel panel-default padded-panel"),
+          other_args = "out.width='100%'",
+          caption = sprintf("'Frequency of occurrence of SNV-SNV combinations in the siRF fit for the binarized %s phenotype (binarization threshold = %s). SNV-SNV combinations with the highest number of occurrences in the siRF decision paths contribute the most to the overall locus-level interaction importance in the siRF fit.'", phenotype_name, thr)
+        )
+        chunk_idx <- chunk_idx + 1
+        cat("\n\n")
+
+        # # heatmap
+        # plt <- readRDS(
+        #   file.path(fig_res_dir,
+        #             paste0(phenotype, "_thr", thr,
+        #                    "_int_local_stability_heatmap_", type, ".rds"))
+        # )
+        # subchunkify(plt, i = chunk_idx, fig_height = HEATMAP_HEIGHT,
+        #             add_class = c("panel panel-default"),
+        #             other_args = "out.width='100%'")
+        # chunk_idx <- chunk_idx + 1
+      }
+    }
+
+    cat(sprintf(section_header, "Local Stability Importance Plots - Loci"))
+    for (thr in thrs) {
+      cat(sprintf(thr_header, thr))
+      for (type in method_types) {
+        # distribution plots
+        plt <- readRDS(
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_local_stability_dist_", type, ".rds"
+            )
+          )
+        )
+        nrows <- ceiling(nlevels(plt$data$feature) / 4)
+        subchunkify(plt,
+          i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+          add_class = c("panel panel-default"),
+          other_args = "out.width='100%'",
+          caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) for each signed locus (specified by subplot). Here, we show only the top 25 signed loci, ranked by their average local stability importance scores. The permutation test p-value, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name)
+        )
+        chunk_idx <- chunk_idx + 1
+        cat("\n\n")
+
+        # individual snp plots
+        plt <- readRDS(
+          file.path(
+            fig_res_dir,
+            paste0(
+              phenotype, "_thr", thr,
+              "_local_stability_snp_dist_", type, ".rds"
+            )
+          )
+        )
+        nrows <- ceiling(length(unique(plt$data$Gene)) / 3)
+        subchunkify(ggplotly(plt, tooltip = c("y", "text")),
+          i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+          add_class = c("panel panel-default padded-panel"),
+          other_args = "out.width='100%'",
+          caption = sprintf("'Frequency of occurrence of SNVs in the siRF fit for the binarized %s phenotype (binarization threshold = %s). SNVs with the highest number of occurrences in the siRF decision paths contribute the most to the overall locus-level importance in the siRF fit. SNVs are ordered on the x-axis by genomic location.'", phenotype_name, thr)
+        )
+        chunk_idx <- chunk_idx + 1
+        cat("\n\n")
+
+        # # heatmap
+        # plt <- readRDS(
+        #   file.path(fig_res_dir,
+        #             paste0(phenotype, "_thr", thr,
+        #                    "_local_stability_heatmap_", type, ".rds"))
+        # )
+        # subchunkify(plt, i = chunk_idx, fig_height = HEATMAP_HEIGHT,
+        #             add_class = c("panel panel-default"),
+        #             other_args = "out.width='100%'")
+        # chunk_idx <- chunk_idx + 1
+      }
+    }
+  }
+}
+```
+
+
+## Advantages of Signed Information {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
+
+<div class="panel panel-default padded-panel">
+Though the signed information is not pertinent to our goal of prioritizing/recommending candidate markers for experiments, the signed information from siRF provides more granular information that can improve our interpretation of the fit. To see this, suppose that we did not keep track of the sign of the feature when splitting (i.e., that we do not keep track of whether we split on low or high values of the feature). Suppose also that we would like to measure the importance of feature $X_1$, which was used as the first (root) split in tree $T$. In the first step in our new importance score computation, we compute the local stability importance (LSI) score of $X_1$ for each individual $i$. If we do not keep track of the sign of the $X_1$ split, then $X_1$ appears on every individual's decision path so that $LSI_T(X_1, i) = 1$ for every individual $i$. In the next step of our new importance score computation, we perform a permutation test to assess whether there is a difference in the LSI scores for individuals with high LVMi and those with low LVMi. Since $LSI_T(X_1, i) = 1$ for every $i$, this permutation test will return a p-value of 1. This suggests that $X_1$ is an unimportant feature in this model. However, this is counterintuitive given that $X_1$ was split on first in the tree and should be considered one of the most important features in this tree. By keeping track of the signed information of the splits as done in siRF, we can utilize this more granular information to mitigate the issue discussed above and improve our interpretation of the siRF fit.
+
+Moreover, to facilitate the interpretation of this signed information, it can be beneficial to aggregate SNV features that are *positively* correlated (as opposed to negatively correlated) into a single locus (or group). Since the encoding of SNVs as a value taking on 0, 1, or 2 is rather arbitrary (e.g., a value of 0 can be re-encoded to take on the value of 2 by changing the reference allele), we can choose the encoding of the SNV to try to avoid strong negative correlations within a locus. More specifically, for each genetic locus which consists of SNVs $X_1, \ldots, X_g$, we choose to "flip" the encoding of the SNV $X_j$ ($j = 2, \ldots, g$) if the Pearson correlation between the observed values of $X_j$ and $X_1$ is below -0.15. Here, we use the term "flip" to mean the application of the function that maps 0 to 2, 1 to 1, and 2 to 0. This correlation threshold of -0.15 was chosen by visually inspecting the resulting pairwise correlations between $X_i$ and $X_j$ for all $i, j = 1, \ldots, g$ and checking that these pairwise correlations are not strongly negative. However, while we focus on the lo-siRF prioritization results using this correlation threshold of -0.15, the results appear to be robust to other reasonable correlation threshold choices (e.g., -0.05, -0.25). Further analysis and improvements to this procedure are very interesting for future work.
+</div>
+
+
+# Final Remarks
+
+<div class="panel panel-default padded-panel">
+We reiterate that lo-siRF was originally developed as a first-stage recommendation (or hypothesis generation) tool within a broader pipeline in order to prioritize genetic loci and interactions between loci for downstream analyses and experimental validation. Importantly, the output of lo-siRF is a prioritization/ranking order, not a proper statistical test of significance. We rely on follow-up investigations and in this study rigorous gene-silencing experiments in order to validate the prioritized genetic loci and interaction between loci. With that, many of the modeling decisions and human judgment calls were made with this original use case in mind. For other use cases or problems, it is highly likely that different choices may be better suited. We also acknowledge that though many stability checks were conducted to help ensure that our conclusions are stable across different reasonable data and/or modeling perturbations, these stability checks are inevitably constrained by computational limitations, and additional stability analyses can be conducted. We hope that by documenting our modeling choices, stability analyses, and providing insights into our motivations/reasons, this may help to both clarify the limitations of our current work and to facilitate the trustworthy (veridical) use of lo-siRF (and variants thereof) in other scientific problems.
+</div>
+
+# Bibliography
+
+<div class="panel panel-default padded-panel">
+<div id="refs"></div>
+</div>
