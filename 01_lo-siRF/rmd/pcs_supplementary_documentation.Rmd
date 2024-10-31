@@ -1,7 +1,7 @@
 ---
 title: "PCS documentation for low-signal signed iterative random forests (lo-siRF)"
 # author: "Tiffany M. Tang"
-date: "October 28, 2023"
+date: "September 27, 2024"
 bibliography: bibliography.bib
 header-includes:
     - \usepackage{float}
@@ -148,9 +148,21 @@ In this supplementary PCS documentation, we will:
 2. Provide additional exploration and insight into the main results presented in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1) alongside the stability analyses.
 
 In what follows, we organize this documentation by step in the lo-siRF pipeline (see [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1)), beginning with the choice of phenotypic data, followed by the dimension reduction step, binarization step, prediction step, and concluding with the prioritization step.
+We then investigate the possibility of pleiotropy between LV mass and blood pressure, conducting a stability analysis where we examine the impact of excluding hypertensive individuals from the lo-siRF analysis. 
+Lastly, we compare the lo-siRF prioritized loci and interactions between loci with those identified using existing methods and conclude with final remarks.
 
 </div>
 
+<div class="panel panel-default padded-panel">
+&#9888;
+**Origins and intended usage of lo-siRF:** 
+As discussed in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1), lo-siRF was originally developed as a first-stage recommendation (or hypothesis generation) tool to prioritize genetic loci and interactions between loci for downstream analyses and experimental validation. 
+Importantly, the output of lo-siRF is a prioritization or ranking order of loci and interactions between loci, not a measure of statistical significance. 
+We emphasize that recommendations or prioritizations from lo-siRF should not be interpreted as causal findings without further investigation. 
+Given the numerous challenges inherent to epistasis discovery (e.g., high heterogeneity, small effect sizes, and unmeasured confounding factors, discussed further in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1)), assessing causality solely from data is incredibly complex and difficult to do *reliably*. 
+Lo-siRF was thus designed and intended to be used as a single step within a larger scientific discovery pipeline. 
+In [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1), we relied on extensive follow-up investigations to validate the lo-siRF-prioritized genetic loci and interactions between loci, and we encourage practitioners to do the same.
+</div>
 
 # Choice of Phenotypic Data {.tabset .tabset-fade .tabset-vmodern}
 
@@ -280,6 +292,8 @@ We refer to [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11
 - **Why the rank-based inverse normal-transformed LVMi?** Because the distribution of LVMi measurements is right skewed (see Figure \@ref(fig:subchunk-1)), and the p-value computation in PLINK and BOLT-LMM rely on normality assumptions, the rank-based inverse normal-transform was taken as in @khurshid2023clinical.
 - **Why was the union taken?** As mentioned previously, relying on a GWAS to do dimension reduction can be limiting since it is primarily assessing marginal associations between the SNVs and the phenotype. There are also other restrictive modeling assumptions (e.g., linearity) that may add to these limitations. Due to this concern that we may be imposing too many unnecessary restrictions in order for SNVs to pass the GWAS filter, we chose to take the union of the top SNVs from BOLT-LMM and from PLINK, rather than taking the intersection which would have made it more difficult or restrictive for SNVs to pass the GWAS filter.
 - **How was the threshold chosen?** We chose the threshold of 1000 SNVs per GWAS method (without clumping) as it (1) struck a balance between the amount of information loss and the computational cost of our downstream modeling and (2) yielded the highest validation prediction accuracy compared to choosing other possible thresholds (500 and 2000) with and without clumping in the prediction modeling stage. We note that this choice of the top 1000 SNVs includes all SNVs that passed the genome-wide significance level (p-value = 5E-8) as well as additional SNVs that did not pass the genome-wide significance level. In particular, taking the top 1000 SNVs corresponds to using the p-value threshold of 1.7E-5 and 6.7E-6 for PLINK and BOLT-LMM, respectively.
+
+**Remark:** We note that alternative dimension reduction strategies may be used in replacement of our proposed procedure. For example, one may consider using a different GWAS software (e.g., REGENIE [@mbatchou2021computationally]), a different phenotype transformation, or perhaps a more sophisticated approach tailored for interactions and epistasis detection (e.g., MAPIT [@crawford2017detecting]).
 
 **Organization:** Under the `GWAS Results Summary` tab, we provide an investigation into the BOLT-LMM and PLINK GWAS results for LVM and LVMi. Under the `GWAS-filtered SNVs`, we explore the selected 1405 SNVs that passed the GWAS filter for the LVMi phenotype.
 </div>
@@ -849,11 +863,13 @@ if (params$eval) {
 
 In the next step of lo-siRF, we chose to binarize the (continuous) LVMi phenotype measurements into two categories: a low LVMi group and a high LVMi group before fitting the prediction models.
 
-**Why did we choose to binarize?** One of our main motivating factors to pursue binarization revolved around the prediction check criteria in the PCS framework [@yu2020veridical]. This predictability principle advocates for the use of prediction accuracy as a reality check. This is to say that at a minimum, models should fit the data well, as measured by prediction accuracy, before believing that the model is capturing something relevant to reality or the real-world phenomena under study. In particular, before we thought to binarize the phenotype, we first attempted to train prediction models using the GWAS-filtered SNVs to predict the original (continuous) LVMi phenotype measurements. While this seemed like the most natural next step, these prediction results illuminated an incredibly weak prediction signal, with validation $R^2$ values hovering very close to 0 (see `Prediction Results without Binarization` tab). Given that an $R^2$ value of 0 can be achieved by simply predicting the mean LVMi response, this raised the question of whether these prediction models are capturing any relevant signal in the data. Consequently, the interpretation of these models may not be an accurate representation of reality. Put differently, these models do not satisfy the prediction check criteria under the PCS framework.
+**Why did we choose to binarize?** One of our main motivating factors to pursue binarization revolved around the prediction check criteria in the PCS framework [@yu2020veridical]. This predictability principle advocates for the use of prediction accuracy as a reality check. This is to say that at a minimum, models should fit the data well, as measured by prediction accuracy, before believing that the model is capturing something relevant to reality or the real-world phenomena under study. In particular, before we thought to binarize the phenotype, we first attempted to train prediction models using the GWAS-filtered SNVs to predict the original (continuous) LVMi phenotype measurements. While this seemed like the most natural next step, these prediction results illuminated an incredibly weak prediction signal, with validation $R^2$ values hovering very close to 0 (see Figure \@ref(fig:subchunk-27) in the `Prediction Results without Binarization` tab). Given that an $R^2$ value of 0 can be achieved by simply predicting the mean LVMi response, this raised the question of whether these prediction models are capturing any biologically-relevant signal in the data. Consequently, the interpretation of these models may not be an accurate representation of reality. Put differently, these models do not satisfy the prediction check criteria under the PCS framework.
 
-Given these difficulties in accurately predicting LVMi, we turned to an alternative school of thought in order to extract reliable insights from such low-signal data. Drawing inspiration from how scientists often reduce complex problems into simplified versions, we can simplify the problem of trying to understand how SNVs are associated with everyone's precise LVMi measurements to asking which SNVs are associated with having extremely high or extremely low LVMi measurements. In other words, we can reduce the problem of predicting (continuous) LVMi responses to predicting whether one has an extremely high LVMi or low LVMi. This binarization not only simplifies the problem conceptually, but may also help to denoise since we are only looking at the more extreme LVMi cases to gain understanding. Furthermore, the original regression problem becomes a classification problem after binarization, which can help to facilitate the interpretation of prediction performance with respect to the prediction check (e.g., it is arguably easier to reason about the practical difference between 55% and 50% balanced classification accuracy than $R^2$ values of 0.05 and 0).
+Given these difficulties in accurately predicting LVMi, we drew inspiration from how scientists often reduce complex problems into simplified versions. Here, the complex version of our problem aims to understand how SNVs are predictive of one's precise (continuous-valued) LVMi measurement. This is challenging, as demonstrated by the poor prediction accuracy discussed previously. On the other hand, arguably the most simplified version of this problem is to understand how SNVs are predictive of whether one has an extremely high or extremely low LVMi measurement. Intuitively, if there are in fact genetic differences between these two LV chamber states, then differentiating between the two groups --- those with extremely high LVMi and those with extremely low LVMi --- should be easier than the original regression problem (i.e., predicting the raw continuous-valued LVMi response). Indeed, we will see this to be the case, observing that the resulting classification models consistently performed better than random guessing unlike the original regression models. More specifically, we observed balanced classification accuracies $>55\%$, area under the receiver operator characteristic (AUROC) $>0.58$, and area under the precision-recall curve (AUPRC) $>0.55$ for the constructed binary classification task (see the `Prediction Step` tab). This prediction performance instills greater trustworthiness that the interpretation of these models after binarization are more relevant to the biological phenomena than the case without binarization.
 
-**How is the binarization done?** In order to binarize the LVMi responses, one must choose some threshold. We chose to binarize the response based on quantiles so that for a given threshold *x*, we took the top and bottom *x*\% of LVMi values and pooled them into the high and low LVMi groups, respectively, while omitting the individuals in the middle quantile range. However, due to the gender-specific biological variation of LVMi shown earlier in the exploratory data analysis (see `Choice of Phenotypic Data`), we performed the binarization for males and females separately. Finally, given that this threshold is artificially introduced, we run the remainder of the lo-siRF pipeline using three different reasonable binarization thresholds (15\%, 20\%, 25\%) that balance the amount of denoising and data lost. In the end, we will consolidate the results that were stable across all three binarization thresholds, described later.
+**How is the binarization done?** We transformed the original regression problem of predicting the raw continuous-valued LVMi response into a binary classification problem as follows. For particular choice of threshold $x$, we partitioned the raw continuous-valued LVMi phenotype into a low, middle, and high LVMi group corresponding to the $[0, x]$, $(x, 1-x)$, and $[1-x, 1]$ quantile ranges, respectively. We then omitted the individuals in the middle quantile range and trained the prediction models to differentiate between the low and high LVMi individuals. However, due to the gender-specific biological variation of LVMi shown earlier in the exploratory data analysis (see `Choice of Phenotypic Data`), we performed this binarization procedure for males and females separately. That is, we computed the quantiles for males and females separately. Finally, given that this threshold is artificially introduced, we run the remainder of the lo-siRF pipeline using three different reasonable binarization thresholds (15\%, 20\%, 25\%) that balance the improvement in prediction signal and amount of data lost. In particular, we note that if we had chosen a binarization threshold of 50\% so that no data is thrown out, then the balanced classification accuracy of the best-performing prediction model (signed iterative random forest) falls to $51%$, which is very similar to random guessing. In the end, we will consolidate the results that were stable across all three binarization thresholds (15\%, 20\%, 25\%), described later.
+
+**Limitations of binarization:** We recognize that this binarization procedure has limitations and that these limitations should be carefully considered in context of the problem under study. For instance, the utility of this binarization is highly dependent on whether understanding the differences between the low and high quantiles is relevant to the study aims. In our case, we believe that the connection between cardiac hypertrophy and those with high LVMi helps to justify the use of binarizing based on the low and high quantiles. If one does not expect a monotonic relationship between the genetic features and the phenotype, then binarization may not be appropriate. In addition, binarization also requires the choice of binarization threshold. This choice is almost certainly a subjective choice and thus necessitates a stability analysis, that is, analyzing the stability of findings across different choices of binarization thresholds. In our case, we only prioritize loci/interactions that were stably important across three different choices of binarization threshold (15%, 20%, and 25%). Finally, binarization also reduces the sample size and systematically omits individuals who are not in the tails of the phenotype distribution. As a result, there may be additional interactions that are missed in lo-siRF. While we do not view this as a major concern if the goal is to recommend a small set of reliable experimental targets, this limitation may certainly impact studies with different end goals.
 
 We expand on the prediction modeling with the binarized LVMi phenotype in the next section (see `Prediction Step`).
 
@@ -1002,13 +1018,13 @@ After choosing to binarize the LVMi phenotype, we next fit various prediction mo
 
 1. Unlike many methods that make linear assumptions or require pre-specification of interaction order (i.e., the number of features involved in an interaction), siRF can identify *higher-order*, *nonlinear* Boolean interactions in a computationally-tractable manner without the need to specify the interaction order of interest. 
 2. Another advantage of siRF for detecting interactions is the resemblance between the localized thresholding behavior of its decision trees and the threshold (or on-off switch-like) behavior frequently observed in biomolecular interactions [@nelson2008lehninger]. In other words, the form of the siRF model appears to be well-suited for the biological phenomena under study.
-3. Furthermore, the prediction accuracy of the siRF model fit can be easily assessed. As discussed previously, prediction accuracy can serve as an indicator of whether or not the model is an accurate representation of reality. This prediction check is a necessary pre-requisite for interpreting the prediction model and is especially important in low-signal regimes such as this study.
+3. Furthermore, the prediction accuracy of the siRF model fit can be easily assessed. siRF also exhibited higher prediction accuracy than other commonly used prediction methods across almost all evaluation metrics examined and binarization thresholds (Figure \@ref(fig:subchunk-29)). As discussed previously, prediction accuracy can serve as an indicator of whether or not the model is an accurate representation of reality. This prediction check is a necessary pre-requisite for interpreting the prediction model and is especially important in low-signal regimes such as this study.
 4. siRF and its predecessor iRF have demonstrated great success in detecting reliable interactions in previous real-world studies, such as in epistasis-controlled hair color [@behr2020learning], obesity [@allen2022using], schizophrenia [@de2022machine], and predictive gene expression networks [@cliff2019high; @walker2022evaluating].
-5. Finally, due to the weak phenotypic signal and the strong correlations between neighboring SNVs due to linkage disequilibrium (see Figure \@ref(fig:subchunk-25)), we believed it was most appropriate to recommend interactions between genetic loci, rather than interactions betweeen individual SNVs. While it is not always clear how to perform this locus-level interaction search when the data is given at the SNV-level, we can build upon the siRF structure to aggregate feature importances across multiple SNVs using our new locus-level importance score, described in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1).
+5. Finally, due to the weak phenotypic signal and the strong correlations between neighboring SNVs due to linkage disequilibrium (Figure \@ref(fig:subchunk-25)), we believed it was most appropriate to recommend interactions between genetic loci, rather than interactions betweeen individual SNVs. While it is not always clear how to perform this locus-level interaction search when the data is given at the SNV-level, we can build upon the siRF structure to aggregate feature importances across multiple SNVs using our new locus-level importance score, described in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1).
 
-Though we are most interested in interpreting the siRF prediction model to identify candidate epistatic interactions, we also fit several other popular prediction models, including RF, L1-regularized logistic regression (Lasso), L2-regularized logistic regression (ridge), and support vector machines (SVM). These prediction models serve as baselines to ensure that siRF indeed fits the data well, relative to these other popular prediction models, and that siRF passes the prediction check in accordance with the PCS framework [@yu2020veridical].
+Though we are most interested in interpreting the siRF prediction model to identify candidate epistatic interactions, we also fit several other popular prediction models, including RF, L1-regularized logistic regression (Lasso), L2-regularized logistic regression (ridge), support vector machines (SVM), multilayer perceptron, AutoGluon TabularPredictor, and a polygenic risk score. These prediction models serve as baselines to ensure that siRF indeed fits the data well, relative to these other popular prediction models, and that siRF passes the prediction check in accordance with the PCS framework [@yu2020veridical].
 
-**Summary of prediction results:** For all of the classification algorithms under investigation, we see that the validation prediction accuracy metrics, measured via classification accuracy, area under the ROC curve (AUROC), and area under the precision-recall curve (AUPRC), are all comfortably above the random-guessing baseline of 0.5 across three different binarization thresholds. This suggests that the prediction models are able to ascertain some phenotypic signal from the SNVs under study. That is, the SNVs used in the prediction models have some predictive power in differentiating those with high LVMi versus those with low LVMi. Moreover, siRF consistently yielded the highest predictive power across the various binarization thresholds and prediction metrics (with one exception being the classification accuracy for the 15\% binarization threshold, where ridge is slightly better than siRF). From this, we conclude that siRF passed the prediction check and will proceed to interpret the siRF fit to recommend and prioritize interactions between genetic loci for downstream analyses and experiments.
+**Summary of prediction results:** For all of the classification algorithms under investigation, we see that the validation prediction accuracy metrics, measured via classification accuracy, area under the receiver operator characteristic curve (AUROC), and area under the precision-recall curve (AUPRC), are all comfortably above the random-guessing baseline of 0.5 across three different binarization thresholds. This suggests that the prediction models are able to ascertain some phenotypic signal from the SNVs under study. That is, the SNVs used in the prediction models have some predictive power in differentiating those with high LVMi versus those with low LVMi. Moreover, siRF consistently yielded the highest predictive power across the various binarization thresholds and prediction metrics (with one exception being the classification accuracy for the 15\% binarization threshold, where ridge is slightly better than siRF). From this, we conclude that siRF passed the prediction check and will proceed to interpret the siRF fit to recommend and prioritize interactions between genetic loci for downstream analyses and experiments.
 
 Beyond the validation prediction accuracies, we also provide the confusion matrices, ROC and precision-recall curves, and pair plots comparing the predicted responses across methods for additional post-hoc exploration.
 
@@ -1234,7 +1250,7 @@ if (params$eval) {
     )
     subchunkify(tab,
       i = chunk_idx,
-      caption = sprintf("'Summary of prediction performance on the validation set for the binarized %s phenotype across various prediction methods, binarization thresholds, and evaluation metrics.'", phenotype_name)
+      caption = sprintf("'Summary of prediction performance on the validation set for the binarized %s phenotype across various prediction methods, binarization thresholds, and evaluation metrics. Abbreviations: siRF, signed iterative random forest; RF, random forest; Lasso, L1-regularized logistic regression; Ridge, L2-regularized logistic regression; SVM, support vector machine; MLP, multilayer perceptron; Autogluon (medium/good), Autogluon TabularPredictor fitted with the medium/good quality preset; PGS, polygenic risk score.'", phenotype_name)
     )
     chunk_idx <- chunk_idx + 1
 
@@ -1456,12 +1472,12 @@ if (params$eval) {
 <div class="panel panel-default padded-panel">
 Finally, we summarize the prioritization results from the lo-siRF pipeline using our new importance score to rank genetic loci and interactions between genetic loci. In this new importance score, we (1) computed a local (i.e., on a per-individual basis) stability importance score that aggregates weak SNV-level importances into stronger locus-level importances using the siRF fit and (2) conducted a permutation test to assess whether the local stability importance scores for a given locus/interaction are different between individuals with high and low LVMi (conditioned on the rest of the fitted forest). The larger the difference in local stability importance scores between those with high versus low LVMi, the greater the importance of the locus/interaction for predicting LVMi. For details on the new importance score, we refer to [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1).
 
-Below, we recap the siRF prediction accuracy for predicting the binarized LVMi across the three binarization thresholds (15\%, 20\%, 25\%) (Figure \@ref(fig:subchunk-58)). Then, in Figure \@ref(fig:subchunk-59), we summarize the prioritization rankings of genetic loci and interaction between loci according to the new importance score. We provide the permutation p-values along with the permutation test statistic, that is, the difference in local feature stability scores between the high and low LVMi groups, with the standard deviation of this permutation distribution in parentheses. 
+Below, we recap the siRF prediction accuracy for predicting the binarized LVMi across the three binarization thresholds (15\%, 20\%, 25\%) (Figure \@ref(fig:subchunk-58)). Then, in Figure \@ref(fig:subchunk-59), we summarize the prioritization rankings of genetic loci and interaction between loci according to the new importance score. We provide the nominal permutation p-values along with the permutation test statistic, that is, the difference in local feature stability scores between the high and low LVMi groups, with the standard deviation of this permutation distribution in parentheses. 
 
 Note that the permutation test was not performed for all loci/interactions (details in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1)). Given our primary aim of generating reliable hypotheses for follow-up experimental validation, we chose to only test loci/interactions that were *predictive* and *stable* in the siRF fit, following the PCS framework for veridical data science [@yu2020veridical]. Specifically, for each binarization threshold, we only tested:
 
 - the top 25 loci with the highest average local stability importance scores, or in other words, those that occurred most stably/frequently (and thus likely predictive) in the siRF fit, and
-- the interactions between loci that were identified by siRF and achieved a stability score > 0.5, stability score for mean increase in precision > 0, and stability score for independence of feature selection > 0. We note that in addition to the explicit stability checks here, the requirement on the mean increase in precision serves as a predictability check, and the requirement on the independence of feature selection serves to differentiate marginal additive effects from non-additive interaction effects (see @kumbier2018refining for details).
+- the interactions between loci that were identified by siRF and achieved a stability score > 0.5, stability score for mean increase in precision > 0, and stability score for feature selection dependence > 0. We note that in addition to the explicit stability checks here, the requirement on the mean increase in precision serves as a predictability check, and the requirement on the feature selection dependence serves to differentiate marginal additive effects from non-additive interaction effects (see @kumbier2018refining for details).
 
 By implementing this additional predictability and stability check, we are requiring that the prioritized loci/interactions meet a higher standard, with the hope that this ultimately generates more reliable (albeit more conservative) experimental recommendations.
 
@@ -1950,9 +1966,12 @@ if (params$eval) {
       tab_res_dir,
       paste0(phenotype, "_irf_pvalues_summary.rds")
     ))
+    tab$x$container <- stringr::str_replace_all(
+      tab$x$container, "p-value", "Nominal p-value"
+    )
     subchunkify(tab,
       i = chunk_idx,
-      caption = sprintf("'Summary of the lo-siRF permutation test results across various %s binarization thresholds including the test statistic (i.e., difference in local feature stability scores between the high and the low %s groups (SD in parentheses) and the resulting p-values. Blank cells indicate that the locus/interaction was not selected for testing for the given binarization threshold. Loci/interactions are ranked according to the mean p-value across all three binarization thresholds. Interactions between genetic loci are highlighted in blue.'", phenotype_name, phenotype_name)
+      caption = sprintf("'Summary of the lo-siRF permutation test results across various %s binarization thresholds including the test statistic (i.e., difference in local feature stability scores between the high and the low %s groups (SD in parentheses) and the resulting nominal p-values. Blank cells indicate that the locus/interaction was not selected for testing for the given binarization threshold. Loci/interactions are ranked according to the mean nominal p-value across all three binarization thresholds. Interactions between genetic loci are highlighted in blue.'", phenotype_name, phenotype_name)
     )
     chunk_idx <- chunk_idx + 1
 
@@ -1966,9 +1985,14 @@ if (params$eval) {
           "_irf_interaction_results.rds"
         )
       ))
+      tab$x$container <- stringr::str_replace_all(
+        tab$x$container, 
+        "lo-siRF Mean Permutation p-value",
+        "Nominal lo-siRF p-value"
+      )
       subchunkify(tab,
         i = chunk_idx,
-        caption = sprintf("'Summary of the siRF locus-level interaction table output for the binarized %s phenotype (binarization threshold = %s). For all metrics excluding the lo-siRF mean permutation p-value, higher values indicate a stronger interaction. Details regarding these metrics in the siRF interaction table output can be found in Kumbier et al. (2018).'", phenotype_name, thr)
+        caption = sprintf("'Summary of the siRF locus-level interaction table output for the binarized %s phenotype (binarization threshold = %s). For all metrics excluding the nominal lo-siRF p-value, higher values indicate a stronger interaction. Details regarding these metrics in the siRF interaction table output can be found in Kumbier et al. (2018).'", phenotype_name, thr)
       )
       chunk_idx <- chunk_idx + 1
       cat("\n\n")
@@ -2007,7 +2031,7 @@ if (params$eval) {
           i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
           add_class = c("panel panel-default padded-panel"),
           other_args = "out.width='100%'",
-          caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) for each signed interaction between loci (specified by subplot) that passed the siRF stability filter. The permutation test p-value, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name)
+          caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) for each signed interaction between loci (specified by subplot) that passed the siRF stability filter. The nominal p-value from the permutation test, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name)
         )
         chunk_idx <- chunk_idx + 1
         cat("\n\n")
@@ -2064,7 +2088,7 @@ if (params$eval) {
           i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
           add_class = c("panel panel-default"),
           other_args = "out.width='100%'",
-          caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) for each signed locus (specified by subplot). Here, we show only the top 25 signed loci, ranked by their average local stability importance scores. The permutation test p-value, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name)
+          caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) for each signed locus (specified by subplot). Here, we show only the top 25 signed loci, ranked by their average local stability importance scores. The nominal p-value from the permutation test, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name)
         )
         chunk_idx <- chunk_idx + 1
         cat("\n\n")
@@ -2109,10 +2133,1206 @@ if (params$eval) {
 ## Advantages of Signed Information {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-square}
 
 <div class="panel panel-default padded-panel">
-Though the signed information is not pertinent to our goal of prioritizing/recommending candidate markers for experiments, the signed information from siRF provides more granular information that can improve our interpretation of the fit. To see this, suppose that we did not keep track of the sign of the feature when splitting (i.e., that we do not keep track of whether we split on low or high values of the feature). Suppose also that we would like to measure the importance of feature $X_1$, which was used as the first (root) split in tree $T$. In the first step in our new importance score computation, we compute the local stability importance (LSI) score of $X_1$ for each individual $i$. If we do not keep track of the sign of the $X_1$ split, then $X_1$ appears on every individual's decision path so that $LSI_T(X_1, i) = 1$ for every individual $i$. In the next step of our new importance score computation, we perform a permutation test to assess whether there is a difference in the LSI scores for individuals with high LVMi and those with low LVMi. Since $LSI_T(X_1, i) = 1$ for every $i$, this permutation test will return a p-value of 1. This suggests that $X_1$ is an unimportant feature in this model. However, this is counterintuitive given that $X_1$ was split on first in the tree and should be considered one of the most important features in this tree. By keeping track of the signed information of the splits as done in siRF, we can utilize this more granular information to mitigate the issue discussed above and improve our interpretation of the siRF fit.
+Though the signed information is not pertinent to our goal of prioritizing/recommending candidate markers for experiments, the signed information from siRF provides more granular information that can improve our interpretation of the fit. To see this, suppose that we did not keep track of the sign of the feature when splitting (i.e., that we do not keep track of whether we split on low or high values of the feature). Suppose also that we would like to measure the importance of feature $X_1$, which was used as the first (root) split in tree $T$. In the first step in our new importance score computation, we compute the local stability importance (LSI) score of $X_1$ for each individual $i$. If we do not keep track of the sign of the $X_1$ split, then $X_1$ appears on every individual's decision path so that $LSI_T(X_1, i) = 1$ for every individual $i$. In the next step of our new importance score computation, we perform a permutation test to assess whether there is a difference in the LSI scores for individuals with high LVMi and those with low LVMi. Since $LSI_T(X_1, i) = 1$ for every $i$, this permutation test will return a nominal p-value of 1. This suggests that $X_1$ is an unimportant feature in this model. However, this is counterintuitive given that $X_1$ was split on first in the tree and should be considered one of the most important features in this tree. By keeping track of the signed information of the splits as done in siRF, we can utilize this more granular information to mitigate the issue discussed above and improve our interpretation of the siRF fit.
 
 Moreover, to facilitate the interpretation of this signed information, it can be beneficial to aggregate SNV features that are *positively* correlated (as opposed to negatively correlated) into a single locus (or group). Since the encoding of SNVs as a value taking on 0, 1, or 2 is rather arbitrary (e.g., a value of 0 can be re-encoded to take on the value of 2 by changing the reference allele), we can choose the encoding of the SNV to try to avoid strong negative correlations within a locus. More specifically, for each genetic locus which consists of SNVs $X_1, \ldots, X_g$, we choose to "flip" the encoding of the SNV $X_j$ ($j = 2, \ldots, g$) if the Pearson correlation between the observed values of $X_j$ and $X_1$ is below -0.15. Here, we use the term "flip" to mean the application of the function that maps 0 to 2, 1 to 1, and 2 to 0. This correlation threshold of -0.15 was chosen by visually inspecting the resulting pairwise correlations between $X_i$ and $X_j$ for all $i, j = 1, \ldots, g$ and checking that these pairwise correlations are not strongly negative. However, while we focus on the lo-siRF prioritization results using this correlation threshold of -0.15, the results appear to be robust to other reasonable correlation threshold choices (e.g., -0.05, -0.25). Further analysis and improvements to this procedure are very interesting for future work.
 </div>
+
+
+# Non-hypertensive Analysis {.tabset .tabset-fade .tabset-vmodern}
+
+## Overview {.unnumbered .tabset .tabset-pills .tabset-square}
+
+<div class="panel panel-default padded-panel">
+The lo-siRF analysis thus far has not accounted for the possibility of pleiotropy, particular between LV mass and blood pressure given the known connections between LV hypertrophy and hypertension [@yildiz2020left]. To evaluate this possibility of pleiotropic effects of the identified variants on both LV mass and blood pressure, we conducted two analyses.
+
+1. We assessed the marginal association between each of the lo-siRF-prioritized variants and hypertension (see `Association between SNVs and Hypertension` tab).
+2. We repeated the lo-siRF analysis using only the subset of UK Biobank individuals who were not reported to have hypertension (see `Lo-siRF Results Summary` tab).
+
+Here, we define hypertensive diseases as anyone with self-reported hypertension, high blood pressure as diagnosed by a doctor, or any ICD10 billing code diagnosis in I10-I16. Out of the 29,661 UK Biobank participants in the original lo-siRF analysis, 7,371 individuals had hypertension, leaving 22,290 individuals for the non-hypertensive analysis. 
+
+</div>
+
+## Association between SNVs and Hypertension {.unnumbered .tabset .tabset-pills .tabset-square}
+
+<div class="panel panel-default padded-panel">
+To assess their marginal association with hypertension, we fit a separate logistic regression model for each of the 1405 GWAS-filtered SNVs, regressing hypertension (i.e., a binary indicator of whether or not one has hypertension) on the genotype of the SNV, while adjusting for the first five principal components of ancestry, sex, age, height, and body weight.
+
+Overall, we found that none of the 1405 SNVs met the genome-wide (p < 5E-8) nor the suggestive (p < 1E-5) significance level (Figure \@ref(fig:subchunk-78) and Figure \@ref(fig:subchunk-80)). Given our interest in the lo-siRF-prioritized interactions, which involve the *TTN*, *CCDC141*, *IGF1R*, and *LOC157273;TNKS* loci, we highlight the SNVs in each locus with the smallest p-values:
+
+- *TTN*: rs35112591 (p = 0.0328)
+- *CCDC141*: rs6725028 (p = 0.0403)
+- *IGF1R*: rs62024491 (p = 0.376)
+- *LOC157273;TNKS*: rs73185221 (0.0491)
+
+The top lo-siRF-prioritized variants in each loci (see Figure 2f in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1)) exhibited even weaker marginal associations with hypertension;
+
+- *TTN*: rs66733621 (p = 0.776)
+- *CCDC141*: rs7591091 (p = 0.446)
+- *IGF1R*: rs62024491 (p = 0.376)
+- *LOC157273;TNKS*: rs6999852 (0.304)
+
+We note however that the *MIR588;RSPO3* locus with lead SNV rs2022479 gave the smallest p-value of 5E-5. This, in combination with the findings in the non-hypertension lo-siRF analysis next, may suggest a possible contribution of the MIR588;RSPO3 locus on mediating LV hypertrophy through regulating blood pressure.
+</div>
+
+```{r htn-gwas, results = "asis"}
+if (!params$eval) {
+  display_image(
+    file.path(res_dir, "no_HTN", "fuma_gwas", "manhattan_FUMA_jobs453594_edited.png"),
+    chunk_idx = chunk_idx,
+    caption = "'Manhattan plot for the association between the 1405 GWAS-filtered SNVs used in the original lo-siRF analysis and hypertension.'"
+  )
+  chunk_idx <- chunk_idx + 1
+
+  htn_gwas_results <- data.table::fread(
+    file.path(res_dir, "no_HTN", "htn_gwas_results_full.csv")
+  )
+  tab <- htn_gwas_results %>%
+    dplyr::select(rsID, Chr, Pos = `hg19 Pos`, `Lo-siRF Locus` = Gene, p = p.value) %>%
+    dplyr::arrange(p) %>%
+    dplyr::slice(1:100) %>%
+    vthemes::pretty_DT(rownames = FALSE)
+  subchunkify(
+    tab,
+    i = chunk_idx,
+    caption = "'**List of top 100 SNVs (out of the 1405 GWAS-filtered SNVs used in the original lo-siRF analysis) with the highest association with hypertension.** rsID = rsID of the SNV. Chr = Chromosome. Pos = Position on hg19. Lo-siRF Locus = assigned locus of the variant in the original lo-siRF analysis. p = P-value measuring the association between the SNV and hypertension.'"
+  )
+  chunk_idx <- chunk_idx + 1
+}
+```
+
+## Non-hypertensive Lo-siRF Results Summary {.unnumbered .tabset .tabset-pills .tabset-square}
+
+<div class="panel panel-default padded-panel">
+Using the same set of 1405 GWAS-filtered SNVs as in the original lo-siRF analysis, we repeated steps 2-4 of the lo-siRF analysis using only the non-hypertension UK Biobank cohort. 
+
+- In Figure \@ref(fig:subchunk-81), we confirm that the siRF fit on the non-hypertensive cohort performs better than random guessing and satisfies the prediction check according to the PCS framework [@yu2020veridical]. We thus choose to proceed with interpreting the siRF fit.
+- Overall, we found that the top 3 interactions between loci from our original lo-siRF analysis --- namely, *CCDC141-IGF1R*, *CCDC141-TTN*, and *CCDC141-LOC157273;TNKS* --- were again prioritized by lo-siRF when excluding the hypertensive individuals. That is, each of the aforementioned interactions yielded a nominal lo-siRF p-value less than our pre-specified threshold of 0.1 (in fact, all were < 0.01) for each of the three binarization thresholds (see Figure \@ref(fig:subchunk-82) below). This is to say that the top lo-siRF-prioritized interactions are stable with respect to the inclusion or exclusion of hypertensive individuals and provides evidence that these interactions are not solely mediating LV hypertrophy through the regulation of blood pressure. 
+- All of the previously prioritized loci, with the exception of the *MIR588;RSPO3* locus, were also prioritized in this non-hypertensive analysis. While the nominal lo-siRF p-value for the *MIR588;RSPO3* locus was 0.019 and 0.007 for the 20\% and 25\% binarization thresholds, the nominal lo-siRF p-value was 0.187 (> 0.1 threshold) for the 15\% binarization threshold and thus deemed not stable and was not prioritized in the non-hypertensive lo-siRF analysis. Though the *MIR588;RSPO3* locus almost met the prioritization criteria here, this result, combined with the suspect marginal association results, suggests a possibility of pleiotropic locus contributing to variations of both blood pressure and LV mass.
+- We provide the full list of loci and interactions between loci from the non-hypertensive lo-siRF analysis in Figure \@ref(fig:subchunk-83). This list includes many loci and interactions that were not stable in the original lo-siRF analysis.
+</div>
+
+```{r nohtn-pred-results-binary, results = "asis"}
+# phenotype_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+section_header <- "\n\n### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+thr_header <- "\n\n#### %s {.unnumbered .tabset .tabset-pills .tabset-fade} \n\n"
+# subsection_header <- "\n\n##### %s {.unnumbered .tabset .tabset-pills .tabset-fade .tabset-circle} \n\n"
+# subsubsection_header <- "\n\n####### %s {.unnumbered} \n\n"
+
+keep_ints <- c("CCDC141-_TTN-", "CCDC141-_IGF1R-", "CCDC141-_LOC157273;TNKS-")
+keep_features <- c("IGF1R", "MIR588;RSPO3", "TTN", "CCDC141", "LSP1")
+keep_features <- c(
+  paste0(keep_features, "+"), paste0(keep_features, "-")
+)
+
+DIST_HEIGHT <- 12
+HEATMAP_HEIGHT <- 8
+EPI_HEIGHT <- 8
+ITER <- 3
+LEFT_MARGIN <- 5
+
+if (params$eval) {
+  for (phenotype in phenotypes) {
+    print(phenotype)
+    eval_ls <- list()
+    int_results_ls <- list()
+    gene_results_ls <- list()
+    for (thr in c(0.15, 0.2, 0.25)) {
+      print(thr)
+      fpath <- file.path(
+        res_dir, "no_htn",
+        paste0(phenotype, "_binary_thr", thr, "_gwas_filtered_nsnps1000")
+      )
+      # > out, yhat_tr2, yhat_va, irf_gene_out, snps.df, irf_snv_int_out
+      load(file.path(fpath, "irf_interaction_fit.Rdata"))
+      y_test <- ifelse(out$pheno_test == 0, "Low LVMi", "High LVMi")
+
+      # prediction results
+      eval_out <- bind_rows(
+        evalPreds(y = out$pheno_test, yhat = yhat_va, metric = c("AUC", "PR")),
+        evalPreds(y = out$pheno_test, yhat = round(yhat_va), metric = c("Class"))
+      ) %>%
+        spread(key = "Metric", value = "Value")
+      eval_ls[[as.character(thr)]] <- eval_out
+
+      # local interaction stability results
+      load(file.path(fpath, "local_interaction_stability_results.Rdata"))
+      int_out <- list(
+        stab_tr2_ls = int_stab_tr2_ls,
+        stab_va_ls = int_stab_va_ls,
+        test_ints_ls = test_ints_ls,
+        perm_out_ls = int_perm_out_ls
+      )
+      int_results_ls[[as.character(thr)]] <- int_perm_out_ls
+
+      int_all_out <- list(`Using all splits` = int_out)
+
+      pval_int <- map_dfr(int_out$perm_out_ls[[ITER]],
+        function(x) {
+          data.frame(
+            pval = x$pval,
+            check.names = FALSE
+          )
+        },
+        .id = "int"
+      ) %>%
+        dplyr::mutate(
+          pval_str = dplyr::case_when(
+            pval < 1e-4 ~ "< 10<sup>-4</sup>",
+            pval < 1e-3 ~ "< 10<sup>-3</sup>",
+            TRUE ~ sprintf("%s", formatC(pval, digits = 3, format = "f"))
+          )
+        )
+
+      style_names_basic <- function(x, italic = TRUE) {
+        x <- x %>%
+          stringr::str_replace_all("-_", "<sup>&#8211;</sup>&#8211;") %>%
+          stringr::str_replace_all("\\+_", "<sup>+</sup>&#8211;") %>%
+          stringr::str_replace_all("-$", "<sup>&#8211;</sup>") %>%
+          stringr::str_replace_all("\\+$", "<sup>+</sup>") %>%
+          kableExtra::cell_spec(escape = FALSE, italic = italic)
+        return(x)
+      }
+
+      # iRF results
+      tab_out <- irf_gene_out$interaction[[ITER]] %>%
+        left_join(y = pval_int, by = "int") %>%
+        dplyr::arrange(pval) %>%
+        dplyr::select(-pval) %>%
+        dplyr::rename(
+          "Interaction" = "int",
+          "Prevalence" = "prevalence",
+          "Precision" = "precision",
+          "Class Difference in Prevalence" = "cpe",
+          "Stability of Class Difference in Prevalence" = "sta.cpe",
+          "Feature Selection Dependence" = "fsd",
+          "Stability of Feature Selection Dependence" = "sta.fsd",
+          "Increase in Precision" = "mip",
+          "Stability of Increase in Precision" = "sta.mip",
+          "Stability" = "stability",
+          "lo-siRF Mean Permutation p-value" = "pval_str"
+        ) %>%
+        dplyr::mutate(Interaction = style_names_basic(Interaction))
+      tab <- pretty_DT(tab_out,
+        digits = 3, sigfig = TRUE, rownames = FALSE,
+        na_disp = "--"
+      )
+      # saveRDS(
+      #   tab,
+      #   file.path(
+      #     tab_res_dir,
+      #     paste0(
+      #       phenotype, "_thr", thr,
+      #       "_irf_interaction_nohtn_results.rds"
+      #     )
+      #   )
+      # )
+
+      for (type in names(int_all_out)) {
+        print(type)
+        # distribution plots
+        int_pvals <- map_dfr(int_all_out[[type]]$perm_out_ls[[ITER]],
+          ~ data.frame(pval = .x$pval),
+          .id = "int"
+        ) %>%
+          arrange(pval) %>%
+          dplyr::mutate(
+            pval_str = dplyr::case_when(
+              pval < 1e-4 ~ "p < 10^-4",
+              pval < 1e-3 ~ "p < 10^-3",
+              # pval < 1e-4 ~ "p < 10<sup>-4</sup>",
+              # pval < 1e-3 ~ "p < 10<sup>-3</sup>",
+              TRUE ~ sprintf("p~`=`~%s", formatC(pval, digits = 3, format = "f"))
+            )
+          ) %>%
+          mutate(int_pval = sprintf("%s (%s)", int, pval_str))
+        plt_df <- int_all_out[[type]]$stab_va_ls[[ITER]] %>%
+          bind_cols(y = y_test) %>%
+          gather(key = "int", value = "Stability", -y) %>%
+          left_join(y = int_pvals, by = "int") %>%
+          # mutate(int = paste0(int, " (p = ", formatC(pval, 3, format = "g"), ")")) %>%
+          filter(int %in% !!keep_ints) %>%
+          mutate(
+            int = factor(int, levels = int_pvals$int[int_pvals$int %in% keep_ints])
+          )
+        plt <- plot_density(data = plt_df, x_str = "Stability", fill_str = "y") +
+          facet_wrap(~int, scales = "free", ncol = 3) +
+          ggplot2::labs(x = "Local Stability Importance Score", fill = "") +
+          ggplot2::geom_text(
+            ggplot2::aes(x = Inf, y = Inf, hjust = 1.1, vjust = 1.5, label = pval_str),
+            data = plt_df %>% dplyr::distinct(int, .keep_all = TRUE),
+            parse = TRUE
+          ) +
+          ggplot2::theme(axis.title = ggplot2::element_text(size = 14))
+        # saveRDS(
+        #   plt,
+        #   file.path(
+        #     fig_res_dir,
+        #     paste0(
+        #       phenotype, "_thr", thr,
+        #       "_int_local_stability_dist_", type, "_nohtn.rds"
+        #     )
+        #   )
+        # )
+
+        # individual snp plots
+        plt <- plotRFSnpIntDist(
+          irf_gene_out$rf.list[[ITER]], snps.df,
+          int_pvals$int[int_pvals$int %in% keep_ints],
+          prop = TRUE
+        ) +
+          ggplot2::labs(x = "SNV-SNV Pair")
+        # saveRDS(
+        #   plt,
+        #   file.path(
+        #     fig_res_dir,
+        #     paste0(
+        #       phenotype, "_thr", thr,
+        #       "_int_local_stability_snp_dist_", type, "_nohtn.rds"
+        #     )
+        #   )
+        # )
+      }
+
+      # local feature stability results
+      load(file.path(fpath, "local_feature_stability_results.Rdata"))
+      stab_out <- list(
+        stab_tr2_ls = stab_tr2_ls,
+        stab_va_ls = stab_va_ls,
+        test_genes_ls = test_genes_ls,
+        perm_out_ls = perm_out_ls
+      )
+      gene_results_ls[[as.character(thr)]] <- perm_out_ls
+
+      stab_all_out <- list(`Using all splits` = stab_out)
+
+      for (type in names(int_all_out)) {
+        print(type)
+        stab_df <- stab_all_out[[type]]$stab_va_ls[[ITER]] %>%
+          select(all_of(stab_all_out[[type]]$test_genes_ls[[ITER]]))
+
+        # distribution plots
+        ft_pvals <- map_dfr(stab_all_out[[type]]$perm_out_ls[[ITER]],
+          ~ data.frame(pval = .x$pval),
+          .id = "feature"
+        ) %>%
+          arrange(pval) %>%
+          dplyr::mutate(
+            pval_str = dplyr::case_when(
+              pval < 1e-4 ~ "p < 10^-4",
+              pval < 1e-3 ~ "p < 10^-3",
+              # pval < 1e-4 ~ "p < 10<sup>-4</sup>",
+              # pval < 1e-3 ~ "p < 10<sup>-3</sup>",
+              TRUE ~ sprintf("p~`=`~%s", formatC(pval, digits = 3, format = "f"))
+            )
+          ) %>%
+          mutate(ft_pval = paste0(feature, " (p = ", formatC(pval, 3, format = "g"), ")"))
+        plt_df <- stab_df %>%
+          bind_cols(y = y_test) %>%
+          gather(key = "feature", value = "Stability", -y) %>%
+          left_join(y = ft_pvals, by = "feature") %>%
+          # mutate(feature = paste0(feature, " (p = ", formatC(pval, 3, format = "g"), ")")) %>%
+          filter(feature %in% !!keep_features) %>%
+          mutate(
+            feature = factor(
+              feature,
+              levels = ft_pvals$feature[ft_pvals$feature %in% keep_features]
+            )
+          )
+        plt <- plot_density(data = plt_df, x_str = "Stability", fill_str = "y") +
+          facet_wrap(~feature, scales = "free", ncol = 4) +
+          ggplot2::labs(x = "Local Stability Importance Score", fill = "") +
+          ggplot2::geom_text(
+            ggplot2::aes(x = Inf, y = Inf, hjust = 1.1, vjust = 1.5, label = pval_str),
+            data = plt_df %>% dplyr::distinct(feature, .keep_all = TRUE),
+            parse = TRUE
+          ) +
+          ggplot2::theme(axis.title = ggplot2::element_text(size = 14))
+        # saveRDS(
+        #   plt,
+        #   file.path(
+        #     fig_res_dir,
+        #     paste0(
+        #       phenotype, "_thr", thr,
+        #       "_local_stability_dist_", type, "_nohtn.rds"
+        #     )
+        #   )
+        # )
+
+        # individual snp plots
+        plt <- plotRFSnpDist(
+          irf_gene_out$rf.list[[ITER]], snps.df,
+          ft_pvals$feature[ft_pvals$feature %in% keep_features],
+          prop = TRUE
+        ) +
+          ggplot2::labs(x = "SNV (Ordered by Position)")
+        # saveRDS(
+        #   plt,
+        #   file.path(
+        #     fig_res_dir,
+        #     paste0(
+        #       phenotype, "_thr", thr,
+        #       "_local_stability_snp_dist_", type, "_nohtn.rds"
+        #     )
+        #   )
+        # )
+      }
+    }
+
+    tab <- dplyr::bind_rows(eval_ls, .id = "Binarization Threshold") %>%
+      dplyr::rename("Accuracy" = "Class", "AUROC" = "AUC", "AUPRC" = "PR") %>%
+      dplyr::select(`Binarization Threshold`, Accuracy, AUROC, AUPRC) %>%
+      pretty_DT(
+        digits = 3, sigfig = FALSE, rownames = FALSE,
+        options = list(dom = "t", ordering = FALSE)
+      )
+    # saveRDS(
+    #   tab,
+    #   file.path(
+    #     tab_res_dir,
+    #     paste0(phenotype, "_irf_prediction_nohtn_results.rds")
+    #   )
+    # )
+
+    gene_results_df <- purrr::map_dfr(
+      gene_results_ls,
+      function(gene_results) {
+        purrr::map_dfr(
+          gene_results[[ITER]],
+          ~ data.frame(
+            `Mean Difference (High - Low)` = formatC(.x$T_obs, digits = 2, format = "g"),
+            `SD` = formatC(sd(.x$perm_dist), digits = 2, format = "g"),
+            `p-value` = dplyr::case_when(
+              .x$pval < 1e-4 ~ "< 10<sup>-4</sup>",
+              .x$pval < 1e-3 ~ "< 10<sup>-3</sup>",
+              TRUE ~ formatC(.x$pval, digits = 3, format = "f")
+            ),
+            p = .x$pval,
+            check.names = FALSE
+          ),
+          .id = "Locus / Interaction"
+        )
+      },
+      .id = "Binarization Threshold"
+    )
+
+    int_results_df <- purrr::map_dfr(
+      int_results_ls,
+      function(int_results) {
+        purrr::map_dfr(
+          int_results[[ITER]],
+          ~ data.frame(
+            `Mean Difference (High - Low)` = formatC(.x$T_obs, digits = 2, format = "g"),
+            `SD` = formatC(sd(.x$perm_dist), digits = 2, format = "g"),
+            `p-value` = dplyr::case_when(
+              .x$pval < 1e-4 ~ "< 10<sup>-4</sup>",
+              .x$pval < 1e-3 ~ "< 10<sup>-3</sup>",
+              TRUE ~ formatC(.x$pval, digits = 3, format = "f")
+            ),
+            p = .x$pval,
+            check.names = FALSE
+          ),
+          .id = "Locus / Interaction"
+        )
+      },
+      .id = "Binarization Threshold"
+    )
+
+    style_names <- function(x) {
+      color_vec <- stringr::str_detect(x, "_")
+      x <- x %>%
+        stringr::str_replace_all("-_", "<sup>&#8211;</sup>&#8211;") %>%
+        stringr::str_replace_all("-$", "<sup>&#8211;</sup>") %>%
+        stringr::str_replace_all("\\+", "<sup>+</sup>")
+      x <- dplyr::case_when(
+        color_vec ~ kableExtra::cell_spec(
+          x,
+          color = "cornflowerblue", escape = FALSE, italic = TRUE
+        ),
+        TRUE ~ kableExtra::cell_spec(x, escape = FALSE, italic = TRUE)
+      )
+      return(x)
+    }
+
+    feature_order <- dplyr::bind_rows(gene_results_df, int_results_df) %>%
+      dplyr::group_by(`Locus / Interaction`) %>%
+      dplyr::summarise(
+        n = dplyr::n(),
+        mean = mean(p)
+      ) %>%
+      dplyr::arrange(-n, mean) %>%
+      dplyr::select(`Locus / Interaction`)
+
+    color_vec <- stringr::str_detect(feature_order$`Locus / Interaction`, "_")
+
+    results_df <- dplyr::bind_rows(gene_results_df, int_results_df) %>%
+      dplyr::mutate(
+        `Difference in Local Feature Stability (High - Low)` = sprintf("%s (%s)", `Mean Difference (High - Low)`, SD)
+      ) %>%
+      tidyr::pivot_wider(
+        id_cols = `Locus / Interaction`,
+        names_from = `Binarization Threshold`,
+        values_from = c(`Difference in Local Feature Stability (High - Low)`, `p-value`),
+        names_vary = "slowest"
+      ) %>%
+      dplyr::left_join(x = feature_order, y = ., by = "Locus / Interaction") %>%
+      dplyr::mutate(
+        `Locus / Interaction` = style_names(`Locus / Interaction`)
+      )
+    results_tab <- pretty_DT(
+      results_df,
+      na_disp = "--", rownames = FALSE,
+      grouped_header = c(
+        " " = 1, "Binarization Threshold = 0.15" = 2,
+        "Binarization Threshold = 0.20" = 2,
+        "Binarization Threshold = 0.25" = 2
+      ),
+      grouped_subheader = stringr::str_remove(colnames(results_df), "\\_[.0-9]+")
+    )
+    # saveRDS(
+    #   results_tab,
+    #   file.path(
+    #     tab_res_dir,
+    #     paste0(phenotype, "_irf_pvalues_summary_full_nohtn.rds")
+    #   )
+    # )
+
+    results_df <- dplyr::bind_rows(gene_results_df, int_results_df) %>%
+      dplyr::filter(`Locus / Interaction` %in% c(keep_ints, keep_features)) %>%
+      dplyr::mutate(
+        `Difference in Local Feature Stability (High - Low)` = sprintf("%s (%s)", `Mean Difference (High - Low)`, SD)
+      ) %>%
+      tidyr::pivot_wider(
+        id_cols = `Locus / Interaction`,
+        names_from = `Binarization Threshold`,
+        values_from = c(`Difference in Local Feature Stability (High - Low)`, `p-value`),
+        names_vary = "slowest"
+      ) %>%
+      dplyr::inner_join(x = feature_order, y = ., by = "Locus / Interaction") %>%
+      dplyr::mutate(
+        `Locus / Interaction` = style_names(`Locus / Interaction`)
+      )
+    results_tab <- pretty_DT(
+      results_df,
+      na_disp = "--", rownames = FALSE,
+      grouped_header = c(
+        " " = 1, "Binarization Threshold = 0.15" = 2,
+        "Binarization Threshold = 0.20" = 2,
+        "Binarization Threshold = 0.25" = 2
+      ),
+      grouped_subheader = stringr::str_remove(colnames(results_df), "\\_[.0-9]+"),
+      options = list(dom = "t")
+    )
+    # saveRDS(
+    #   results_tab,
+    #   file.path(
+    #     tab_res_dir,
+    #     paste0(phenotype, "_irf_pvalues_summary_nohtn.rds")
+    #   )
+    # )
+  }
+} else {
+  method_types <- c("Using all splits")
+  thrs <- c(0.15, 0.2, 0.25)
+  for (phenotype in phenotypes) {
+    phenotype_name <- names(phenotypes)[phenotypes == phenotype]
+    # cat(sprintf(phenotype_header, phenotype_name))
+
+    # cat(sprintf(section_header, "Summary"))
+    tab <- readRDS(file.path(
+      tab_res_dir,
+      paste0(phenotype, "_irf_prediction_nohtn_results.rds")
+    ))
+    subchunkify(tab,
+      i = chunk_idx,
+      caption = sprintf("'Summary of the validation prediction performance from siRF on the non-hypertensive cohort across various %s binarization thresholds.'", phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+
+    tab <- readRDS(file.path(
+      tab_res_dir,
+      paste0(phenotype, "_irf_pvalues_summary_nohtn.rds")
+    ))
+    tab$x$container <- stringr::str_replace_all(
+      tab$x$container, "p-value", "Nominal p-value"
+    )
+    subchunkify(tab,
+      i = chunk_idx,
+      caption = sprintf("'Summary of the non-hypertensive lo-siRF permutation test results across various %s binarization thresholds including the test statistic (i.e., difference in local feature stability scores between the high and the low %s groups (SD in parentheses) and the resulting nominal p-values. Results are shown for the loci/interactions that were previously prioritized in the original lo-siRF analysis (including both hypertensive and non-hypertensive individuals). Loci/interactions are ranked according to the mean nominal p-value across all three binarization thresholds. Interactions between genetic loci are highlighted in blue. This table is a subset of the table below.'", phenotype_name, phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+
+    tab <- readRDS(file.path(
+      tab_res_dir,
+      paste0(phenotype, "_irf_pvalues_summary_full_nohtn.rds")
+    ))
+    tab$x$container <- stringr::str_replace_all(
+      tab$x$container, "p-value", "Nominal p-value"
+    )
+    subchunkify(tab,
+      i = chunk_idx,
+      caption = sprintf("'Summary of the non-hypertensive lo-siRF permutation test results across various %s binarization thresholds including the test statistic (i.e., difference in local feature stability scores between the high and the low %s groups (SD in parentheses) and the resulting nominal p-values. Blank cells indicate that the locus/interaction was not selected for testing for the given binarization threshold. Loci/interactions are ranked according to the mean nominal p-value across all three binarization thresholds. Interactions between genetic loci are highlighted in blue.'", phenotype_name, phenotype_name)
+    )
+    chunk_idx <- chunk_idx + 1
+
+    # cat(sprintf(section_header, "siRF Interaction Table"))
+    # for (thr in thrs) {
+    #   cat(sprintf(thr_header, thr))
+    #   tab <- readRDS(file.path(tab_res_dir,
+    #                            paste0(phenotype, "_thr", thr,
+    #                                   "_irf_interaction_nohtn_results.rds")))
+    #   subchunkify(tab, i = chunk_idx,
+    #               caption = sprintf("'Summary of the siRF locus-level interaction table output for the binarized %s phenotype (binarization threshold = %s) in the non-hypertensive lo-siRF analysis. For all metrics excluding the lo-siRF mean permutation p-value, higher values indicate a stronger interaction. Details regarding these metrics in the siRF interaction table output can be found in Kumbier et al. (2018).'", phenotype_name, thr))
+    #   chunk_idx <- chunk_idx + 1
+    #   cat("\n\n")
+    # }
+    #
+    # cat(sprintf(section_header, "Local Stability Importance Plots - Interactions"))
+    # for (thr in thrs) {
+    #   cat(sprintf(thr_header, thr))
+    #   for (type in method_types) {
+    #     # distribution plots
+    #     plt <- readRDS(
+    #       file.path(fig_res_dir,
+    #                 paste0(phenotype, "_thr", thr,
+    #                        "_int_local_stability_dist_", type, "_nohtn.rds"))
+    #     )
+    #     nrows <- ceiling(nlevels(plt$data$int) / 3)
+    #     subchunkify(plt, i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+    #                 add_class = c("panel panel-default padded-panel"),
+    #                 other_args = "out.width='100%'",
+    #                 caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) in the non-hypertensive lo-siRF analysis. Results are shown for each signed interaction between loci (specified by subplot) that was prioritized in the original lo-siRF analysis. The permutation test p-value, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name))
+    #     chunk_idx <- chunk_idx + 1
+    #     cat("\n\n")
+    #
+    #     # individual snp plots
+    #     plt <- readRDS(
+    #       file.path(fig_res_dir,
+    #                 paste0(phenotype, "_thr", thr,
+    #                        "_int_local_stability_snp_dist_", type, "_nohtn.rds"))
+    #     )
+    #     nrows <- ceiling(length(unique(plt$data$Genes)) / 3)
+    #     subchunkify(ggplotly(plt), i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+    #                 add_class = c("panel panel-default padded-panel"),
+    #                 other_args = "out.width='100%'",
+    #                 caption = sprintf("'Frequency of occurrence of SNV-SNV combinations in the siRF fit for the binarized %s phenotype (binarization threshold = %s) in the non-hypertensive lo-siRF analysis. SNV-SNV combinations with the highest number of occurrences in the siRF decision paths contribute the most to the overall locus-level interaction importance in the siRF fit.'", phenotype_name, thr))
+    #     chunk_idx <- chunk_idx + 1
+    #     cat("\n\n")
+    #   }
+    # }
+    #
+    # cat(sprintf(section_header, "Local Stability Importance Plots - Loci"))
+    # for (thr in thrs) {
+    #   cat(sprintf(thr_header, thr))
+    #   for (type in method_types) {
+    #     # distribution plots
+    #     plt <- readRDS(
+    #       file.path(fig_res_dir,
+    #                 paste0(phenotype, "_thr", thr,
+    #                        "_local_stability_dist_", type, "_nohtn.rds"))
+    #     )
+    #     nrows <- ceiling(nlevels(plt$data$feature) / 4)
+    #     subchunkify(plt, i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+    #                 add_class = c("panel panel-default"),
+    #                 other_args = "out.width='100%'",
+    #                 caption = sprintf("'Distribution of local stability importance scores between the high and low %s groups (binarization threshold = %s) in the non-hypertensive lo-siRF analysis. Results are shown for each signed locus (specified by subplot) that was prioritized in the original lo-siRF analysis. The permutation test p-value, assessing distributional differences between the high and low %s groups, is provided in the top right corner of each subplot.'", phenotype_name, thr, phenotype_name))
+    #     chunk_idx <- chunk_idx + 1
+    #     cat("\n\n")
+    #
+    #     # individual snp plots
+    #     plt <- readRDS(
+    #       file.path(fig_res_dir,
+    #                 paste0(phenotype, "_thr", thr,
+    #                        "_local_stability_snp_dist_", type, "_nohtn.rds"))
+    #     )
+    #     nrows <- ceiling(length(unique(plt$data$Gene)) / 3)
+    #     subchunkify(ggplotly(plt, tooltip = c("y", "text")), i = chunk_idx, fig_height = DIST_HEIGHT / 4 * nrows,
+    #                 add_class = c("panel panel-default padded-panel"),
+    #                 other_args = "out.width='100%'",
+    #                 caption = sprintf("'Frequency of occurrence of SNVs in the siRF fit for the binarized %s phenotype (binarization threshold = %s) in the non-hypertensive lo-siRF analysis. SNVs with the highest number of occurrences in the siRF decision paths contribute the most to the overall locus-level importance in the siRF fit. SNVs are ordered on the x-axis by genomic location.'", phenotype_name, thr))
+    #     chunk_idx <- chunk_idx + 1
+    #     cat("\n\n")
+    #   }
+    # }
+  }
+}
+```
+
+# Comparison to Existing Methods {.tabset .tabset-fade .tabset-vmodern}
+
+## Epistasis Detection Methods {.unnumbered .tabset .tabset-pills .tabset-square}
+
+<div class="panel panel-default padded-panel">
+In this section, we compare the lo-siRF-prioritized interactions between loci to those interactions prioritized by other existing epistasis detection methods, namely, an exhaustive pairwise interaction search via linear (or logistic) regression, MAPIT [@crawford2017detecting], and a locus-level version of MAPIT where we combined MAPIT and gene set enrichment analysis (GSEA) [@subramanian2005gene; @mootha2003pgc].
+</div>
+
+### Regression-based pairwise interaction scan {.unnumbered .tabset .tabset-pills .tabset-circle}
+
+<div class="panel panel-default padded-panel">
+Below, we present the results from conducting an exhaustive pairwise interaction scan using linear (or logistic) regression over all GWAS-filtered SNVs with a minor allele frequency > 0.05. 
+In this exhaustive interaction search, there are four different transformations of the LVMi response/phenotype that are of interest --- namely, the rank-based inverse normal-transformed (RINT) LVMi (fitted using linear regression) and the binarized LVMi at three different thresholds (0.15, 0.2, and 0.25) (fitted using logistic regression). 
+Details regarding the methodology can be found in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1).
+
+- In Figure \@ref(fig:subchunk-84), we examined the stability of the top ranked SNV-SNV interactions (i.e., those with the smallest p-values for the interaction term) across the different choices of LVMi response (i.e., RINT or one of the binarized versions). While there is some positive correlation across the different binarization runs, we found that there is very little correlation between the prioritized interactions when using the RINT-transformed LVMi versus the binarized LVMi as the response.
+  - We note that the exhaustive interaction search was also conducted using all 1405 GWAS-filtered SNVs without the minor allele frequency filter. However, this led to even greater instability. We hence omit these results and focus on the results after restricting to SNVs with a minor allele frequency > 0.05.
+- In Figure \@ref(fig:subchunk-85), we provide a table of the SNV-SNV interactions and their corresponding interaction term p-values for each choice of LVMi response. We show only those SNV-SNV interactions with a p-value < 0.01 for at least one of the LVMi responses.
+  - We note that none of the SNV-SNV interactions met the $\alpha = 0.05$ significance threshold after performing a Bonferroni multiple testing adjustment. 
+  - Still, one could in theory use the p-values for ranking SNV-SNV interactions. For the unbinarized RINT-transformed LVMi response, the top interaction was between rs10227393 (chromosome 7; *TPK1;CNTNAP2* locus) and rs8076248 (chromosome 17; *CFAP52* locus). For the binarized LVMi response using both the 15% and 25% thresholds, the top interaction was between rs3176323 (chromosome 6; *CDKN1A* locus) and rs12795076 (chromosome 11; *KIRREL3* locus). To our knowledge, these loci are not known to be closely related to hypertrophy. Only for the binarized LVMi response with the 20% threshold do we obtain a top interaction involving one of the lo-siRF-prioritized loci. Here, the top interaction is between rs12618871 (chromosome 2; *CCDC141* locus) and rs9267356 (chromosome 6; *MICB* locus). 
+
+These differences in the top interactions across the different LVMi responses further highlight the instability of the regression-based pairwise interaction scan. This instability poses issues in interpreting results, as it can be unclear which results to trust. We suspect that at least part of the instability is a result of the low signal-to-noise ratio in this problem and highlights the need for more robust and stability-driven methods, such as lo-siRF, for detecting epistasis in low signal-to-noise regimes.
+  
+</div>
+
+```{r pairwise-interaction-scan, results = "asis"}
+thr_header <- "\n\n#### %s\n\n"
+
+pheno_names <- c(
+  "iLVM_norm",
+  "iLVM_binary_thr0.15",
+  "iLVM_binary_thr0.2",
+  "iLVM_binary_thr0.25"
+)
+
+if (params$eval) {
+  maf_df <- data.table::fread(
+    file.path(data_dir, "plink_data", "HTN_training.frq")
+  ) %>%
+    tibble::as_tibble()
+  rm_snps <- maf_df %>%
+    dplyr::filter(MAF < 0.05) %>%
+    dplyr::left_join(snps_df, by = c("SNP" = "rsID")) %>%
+    dplyr::pull(Name)
+
+  results_ls <- list()
+  for (pheno_name in pheno_names) {
+    results <- readRDS(
+      file.path(
+        res_dir, "epistasis_comparisons", "manual",
+        sprintf("%s_snpxsnp_scan.rds", pheno_name)
+      )
+    ) %>%
+      dplyr::filter(
+        !(snp1_name %in% rm_snps), !(snp2_name %in% rm_snps)
+      )
+    snps_df1 <- loadSNPInfo(unique(results$snp1_name)) %>%
+      dplyr::select(Name, rsID1 = rsID)
+    snps_df2 <- loadSNPInfo(unique(results$snp2_name)) %>%
+      dplyr::select(Name, rsID2 = rsID)
+    results <- results %>%
+      dplyr::left_join(snps_df1, by = c("snp1_name" = "Name")) %>%
+      dplyr::left_join(snps_df2, by = c("snp2_name" = "Name"))
+
+    results_ls[[pheno_name]] <- results %>%
+      dplyr::select(
+        `SNP1 rsID` = rsID1, `SNP1 Chr`, `SNP1 Locus` = `SNP1 Gene`,
+        `SNP2 rsID` = rsID2, `SNP2 Chr`, `SNP2 Locus` = `SNP2 Gene`,
+        `SNP1xSNP2 Interaction p-value` = `snp1:snp2`
+      )
+  }
+
+  agg_results_ls <- purrr::imap(
+    results_ls,
+    ~ .x %>%
+      dplyr::mutate(
+        order = purrr::map2(
+          `SNP1 Locus`, `SNP2 Locus`,
+          ~ rank(c(.x, .y))
+        ),
+        rsID = purrr::pmap_chr(
+          list(snp1 = `SNP1 rsID`, snp2 = `SNP2 rsID`, order = order),
+          function(snp1, snp2, order) {
+            paste(c(snp1, snp2)[order], collapse = "-")
+          }
+        ),
+        Locus = purrr::pmap_chr(
+          list(snp1 = `SNP1 Locus`, snp2 = `SNP2 Locus`, order = order),
+          function(snp1, snp2, order) {
+            paste(c(snp1, snp2)[order], collapse = "-")
+          }
+        ),
+        Chr = purrr::pmap_chr(
+          list(snp1 = `SNP1 Chr`, snp2 = `SNP2 Chr`, order = order),
+          function(snp1, snp2, order) {
+            paste(c(snp1, snp2)[order], collapse = "-")
+          }
+        )
+      ) %>%
+      dplyr::select(rsID, Locus, Chr, `SNP1xSNP2 Interaction p-value`) %>%
+      dplyr::arrange(`SNP1xSNP2 Interaction p-value`) %>%
+      dplyr::rename(
+        {{ .y }} := `SNP1xSNP2 Interaction p-value`
+      ) %>%
+      dplyr::distinct(rsID, .keep_all = TRUE)
+  )
+
+  results_df <- purrr::reduce(
+    agg_results_ls, dplyr::full_join,
+    by = c("rsID", "Locus", "Chr")
+  ) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      mean_p = mean(dplyr::c_across(`iLVM_norm`:`iLVM_binary_thr0.25`))
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(mean_p) %>%
+    na.omit() %>%
+    dplyr::filter(
+      iLVM_norm < 0.01 |
+        iLVM_binary_thr0.15 < 0.01 |
+        iLVM_binary_thr0.2 < 0.01 |
+        iLVM_binary_thr0.25 < 0.01
+    )
+
+  # saveRDS(
+  #   results_df,
+  #   file = file.path(res_dir, "epistasis_comparisons", "manual", "iLVM_snpxsnp_scan_results.rds")
+  # )
+} else {
+  results_df <- readRDS(
+    file.path(res_dir, "epistasis_comparisons", "manual", "iLVM_snpxsnp_scan_results.rds")
+  ) %>%
+    dplyr::rename(
+      `LVMi (RINT)` = iLVM_norm,
+      `LVMi (Binarization = 0.15)` = iLVM_binary_thr0.15,
+      `LVMi (Binarization = 0.2)` = iLVM_binary_thr0.2,
+      `LVMi (Binarization = 0.25)` = iLVM_binary_thr0.25,
+      `Mean p-value` = mean_p
+    )
+  plt <- results_df %>%
+    dplyr::mutate(
+      dplyr::across(tidyselect::starts_with("LVMi"), ~ -log10(.x))
+    ) %>%
+    vdocs::plot_pairs(
+      columns = colnames(results_df)[
+        stringr::str_starts(colnames(results_df), "LVMi")
+      ]
+    )
+  subchunkify(
+    plt,
+    i = chunk_idx, fig_height = 8,
+    add_class = c("panel panel-default"),
+    other_args = "out.width='100%'",
+    caption = "'**Pair plot of the LVMi interaction effect p-values from an exhaustive regression-based SNVxSNV interaction scan using different transformations of the LVMi phenotype.** The transformations of interest include the rank-based inverse normal-transformed LVMi and the binarized LVMi using three different binarization thresholds (15%, 20%, 25%). The x- and y-axes show the interaction effect p-values after a -log10 transformation. Each point represents an SNV-SNV pair. We observe that the interaction effect p-values are generally unstable and depend on the choice of transformation of the phenotype (or response).'"
+  )
+  chunk_idx <- chunk_idx + 1
+
+  tab <- pretty_DT(results_df)
+  subchunkify(tab,
+    i = chunk_idx,
+    caption = "'**List of SNV-SNV interactions from an exhaustive regression-based SNVxSNV interaction scan using different transformations of the LVMi phenotype.** The transformations of interest include the rank-based inverse normal-transformed LVMi and the binarized LVMi using three different binarization thresholds (15%, 20%, 25%). The table sorts the SNV-SNV interactions based on the mean p-value across the different transformations of the LVMi phenotype. To sort the SNV-SNV interactions based upon their p-value from a particular transformation, please use the toggles next to the column names. Only interactions that yielded a p-value < 0.01 for at least one transformation of the LVMi phenotype are shown for brevity.'"
+  )
+  chunk_idx <- chunk_idx + 1
+}
+```
+
+### MAPIT {.unnumbered .tabset .tabset-pills .tabset-circle}
+
+<div class="panel panel-default padded-panel">
+Given the instabilities observed in the exhaustive regression-based interaction search, we applied MAPIT [@crawford2017detecting] to our dataset as an additional comparison method. At a high-level, MAPIT aims to identify variants with non-zero marginal epistatic effects, defined as the total pairwise interaction effect between the given variant and all other variants in the data.
+
+Similar to before, we used the GWAS-filtered SNVs with minor allele frequency > 0.05 as input to MAPIT. For the response, we used the rank-based inverse normal-transformed LVMi only since the MAPIT extension to binary traits has not yet been implemented. Details regarding the methodology can be found in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1).
+
+  - Note: we also tried applying MAPIT to the full set of 1405 GWAS-filtered SNVs (without the additional minor allele frequency filter). However, the resulting top SNVs were predominantly those with the smallest minor allele frequencies, and we omit these results.
+
+The top 5 SNVs from MAPIT with the smallest p-values were located in the *MAT2B;LINC02143*, *MICB*, *BRMS1L;LINC00609*, and *CDKN1A* loci (Figure \@ref(fig:subchunk-86)). Interestingly, the highest-ranked SNVs from the *CCDC141*, *TTN*, and *IGF1R* loci were ranked 109 (p = 0.028), 75 (p = 0.003), and 87 (p = 0.011), respectively (compared to p < 8E-5 for the top 5 SNVs), according to MAPIT. 
+
+As is, the results from MAPIT and lo-siRF are not directly comparable since they are operating at different biological scales (i.e., MAPIT aims to identify epistatic variants while lo-siRF aims to identify epistatic loci). Variant-level approaches are known to be under-powered in traits where the effect of each variant is very small and/or noisy while group-level (or locus-level) approaches aggregate these signals across a collection of variants in hope of detecting more stable and biologically-relevant loci. In addition to this difference, there are a number of other potential reasons why MAPIT and lo-siRF may yield different, but non-contradictory results. For example, MAPIT and lo-siRF assume different underlying model assumptions and may capture different forms of interactions. In short, MAPIT encodes interactions as pairwise multiplicative effects (more typical in the statistical epistasis literature) whereas lo-siRF takes a more machine learning approach, encoding pairwise and higher-order interactions through decision paths (or boolean thresholding operations) in a decision tree. Other potential differences may stem from the different handling of variants with minor allele frequencies below 0.05 or the slightly different phenotypes used (i.e., lo-siRF used the binarized LVMi phenotype while MAPIT unfortunately requires a continuous phenotype and thus used the rank-based inverse normal-transformed LVMi). 
+</div>
+
+```{r mapit, results = "asis"}
+if (!params$eval) {
+  mapit_df <- readRDS(
+    file.path(res_dir, "epistasis_comparisons", "mapit", "mvmapit_normal_maf0.05_ranknorm.rds")
+  )$pvalues
+  snps_df <- loadSNPInfo(mapit_df$id)
+  mapit_df <- mapit_df %>%
+    dplyr::left_join(snps_df, by = c("id" = "Name")) %>%
+    dplyr::mutate(Rank = as.integer(rank(p))) %>%
+    dplyr::arrange(p) %>%
+    dplyr::select(
+      Rank, rsID, Chr,
+      Pos = `hg19 Pos`, `Lo-siRF Locus` = Gene, p
+    ) %>%
+    dplyr::filter(p < 0.05)
+  # write.csv(mapit_df, file.path(res_dir, "epistasis_comparisons", "mapit", "mapit_results.csv"), row.names = FALSE)
+  tab <- vthemes::pretty_DT(mapit_df, rownames = FALSE)
+
+  vthemes::subchunkify(
+    tab,
+    i = chunk_idx,
+    caption = "'**Top epistatic variants from MAPIT, ranked by p-value.** We show only the epistatic variants with p-value < 0.05. rsID = rsID of the variant. Chr = Chromosome. Pos = Position on hg19. Lo-siRF Locus = assigned locus of the variant in the lo-siRF analysis. P-value = p-value from MAPIT.'"
+  )
+  chunk_idx <- chunk_idx + 1
+}
+```
+
+### MAPIT+GSEA {.unnumbered .tabset .tabset-pills .tabset-circle}
+
+<div class="panel panel-default padded-panel">
+Since the results of MAPIT and lo-siRF are on different biological scales (i.e., SNVs versus loci), we also conducted a locus-level analysis using MAPIT [@crawford2017detecting] in conjunction with gene set enrichment analysis (GSEA) [@subramanian2005gene; @mootha2003pgc]. In this pipeline, we took the union of the top 10,000 GWAS hits from PLINK and BOLT-LMM, ran MAPIT on these SNVs to obtain a ranked list of SNVs according to their MAPIT p-values, and then ran GSEA on this ranked list to identify loci that are enriched at the top of this ranked list. The results of this MAPIT+GSEA analysis are provided below. We highlight three notable findings from this analysis: When ranking the loci by their normalized enrichment score,
+
+- The top-ranked locus (by MAPIT+GSEA) was the intergenic region between *IGFBP3* and *LOC730338* (denoted as *IGFBP3;LOC730338*). *IGFBP3* encodes an insulin-like growth factor (IGF) binding protein, which is known to interact closely with *IGF1R* [@baxter2023signaling].
+- The three interacting loci, prioritized by lo-siRF, were all ranked within the top 30 by the MAPIT+GSEA analysis (*LOC157273;TNKS*: rank 2; *IGF1R*: rank 7; *TTN*: rank 23; *CCDC141*: rank 28 out of 863 total loci). Their corresponding nominal p-value, FDR q-value, and FWER p-value were 0 (or < 1e-3 given that we used 1000 permutations). We note however that the magnitudes of these p-values are not directly comparable to those from lo-siRF given the different modeling assumptions.
+- Aside from *IGFBP3;LOC730338*, *LOC157273;TNKS*, *IGF1R*, and *ADAMTS16*, other loci ranked in the top 10 by MAPIT+GSEA do not appear to be closely related to cardiac hypertrophy or cardiovascular diseases in the current literature. Moreover, except for *IGFBP3;LOC730338*, *LOC157273;TNKS*, *IGF1R*, *ADAMTS16*, and *FBXL17*, the remaining 5 loci in the top 10 were not among the top 1000 GWAS-filtered SNVs used in the original lo-siRF analysis. In other words, half of the top 10 loci identified by MAPIT+GSEA did not show strong marginal associations with LVMi. There is no expectation that variants involved in epistasis also have large marginal effects, so the lack of marginal associations alone is not particularly concerning. However, combined with the observation that the primary biological functions of these loci are not directly related to the heart, we are uncertain whether these epistatic findings would be validated in wet lab experiments.
+
+Overall, in comparing lo-siRF with MAPIT+GSEA, we are encouraged to see that both methods identified loci like *LOC157273;TNKS*, *IGF1R*, *TTN*, and *CCDC141*. On the other hand, MAPIT+GSEA also identified loci deprioritized by lo-siRF, which turn out to lack biological relevance to cardiac diseases. These discrepancies may arise from the fundamental differences between the computational frameworks of lo-siRF and MAPIT+GSEA, which make direct comparisons challenging. First, MAPIT (or MAPIT+GSEA) outputs single SNVs or loci with marginal epistatic effects while lo-siRF directly identifies specific interactions between genetic loci. Secondly, lo-siRF and MAPIT are based on different modeling assumptions, so their definitions of epistasis are not directly comparable. Lastly, since performing GSEA after MAPIT has not been extensively studied, it is unclear whether the observed strengths and weaknesses of MAPIT+GSEA arise from MAPIT, GSEA, or their combination. It also remains uncertain whether using alternative SNV-to-locus grouping methods (in place of GSEA) would improve upon the epistatic loci rankings. 
+</div>
+
+```{r mapit-genes, results = "asis"}
+if (!params$eval) {
+  tab <- data.table::fread(
+    file.path(
+      res_dir, 
+      "mapit_genes",
+      "mapit_gene_gsea_classic.GseaPreranked.1726843556954",
+      "gsea_report_for_na_pos_1726843556954.tsv"
+    )
+  ) |>
+  tibble::as_tibble() |>
+  dplyr::mutate(
+    Rank = 1:dplyr::n()
+  ) |>
+  dplyr::select(
+    Rank,
+    Name = NAME,
+    `# SNPs` = SIZE,
+    `Enrichment Score` = ES,
+    `Normalized Enrichment Score` = NES,
+    `Nominal p-value` = `NOM p-val`,
+    `FDR q-value` = `FDR q-val`,
+    `FWER p-value` = `FWER p-val`
+  ) |>
+  dplyr::filter(
+    `Nominal p-value` < 0.05
+  ) |>
+  vthemes::pretty_DT(
+    rownames = FALSE,
+    options = list(pageLength = 15, ordering = FALSE)
+  )
+  vthemes::subchunkify(
+    tab,
+    i = chunk_idx,
+    caption = "'**Top epistatic loci from MAPIT+GSEA, ranked by normalized enrichment score.** We show only the epistatic loci with nominal p-value < 0.05.'"
+  )
+  chunk_idx <- chunk_idx + 1
+}
+```
+
+
+## Marginal Gene-based Methods {.unnumbered .tabset .tabset-pills .tabset-square}
+
+<div class="panel panel-default padded-panel">
+In this section, we compare the lo-siRF-prioritized loci to those loci prioritized by other existing marginal set-based methods, such as MAGMA [@de2015magma] (Figures \@ref(fig:subchunk-88)-\@ref(fig:subchunk-90)) and SKAT-O [@lee2012optimal] (Figure \@ref(fig:subchunk-91)). Details regarding the methodology can be found in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1). 
+
+Notably, we found that while lo-siRF prioritized *IGF1R* as one of its top recommended loci, SKAT-O and MAGMA did not rank *IGF1R* very highly. According to SKAT-O, *IGF1R* yielded a p-value of 1.0E-5 and was the 45th ranked locus, and using MAGMA, *IGF1R* yielded a p-value of 0.002 and was the 146th ranked locus. Given our extensive validation efforts demonstrating the importance of *IGF1R* for left ventricular hypertrophy, we view this as an interesting example where lo-siRF is able to identify important loci that are not necessarily prioritized by other methods, even for marginal effects.
+</div>
+
+```{r set-tests, results = "asis"}
+if (!params$eval) {
+  ## MAGMA
+  magma_df <- data.table::fread(
+    file.path(res_dir, "gwas_fuma", "magma", "magma.genes.out")
+  ) %>%
+    dplyr::select(
+      Locus = SYMBOL, Chr = CHR, Start = START, Stop = STOP, Z = ZSTAT, p = P
+    ) %>%
+    dplyr::arrange(p) %>%
+    dplyr::slice(1:200)
+
+  display_image(
+    file.path(res_dir, "gwas_fuma", "magma", "geneManhattan_FUMA_jobs457602.png"),
+    chunk_idx = chunk_idx,
+    caption = "'Manhattan plot of the gene-based test as computed by MAGMA. The genome-wide significance level is shown by the red dotted line.'"
+  )
+  chunk_idx <- chunk_idx + 1
+
+  tab <- vthemes::pretty_DT(magma_df)
+  vthemes::subchunkify(
+    tab,
+    i = chunk_idx,
+    caption = "'**Top genes from MAGMA, ranked by p-value.** We show only the top 200 genes. Locus = Gene symbol. Chr = Chromosome. Start = Start position on hg19. Stop = Stop position on hg19. Z = Z-statistic from MAGMA. P-value = p-value from MAGMA.'"
+  )
+  chunk_idx <- chunk_idx + 1
+
+  ## SKAT
+  load(
+    file.path(res_dir, "skat", "skat_ranknorm_results_maf0.05.Rdata")
+  )
+  tab <- skat_df %>%
+    dplyr::filter(mode == "SKATO") %>%
+    dplyr::arrange(pval) %>%
+    dplyr::select(
+      Locus = Gene, Chr, p = pval
+    ) %>%
+    vthemes::pretty_DT()
+  vthemes::subchunkify(
+    tab,
+    i = chunk_idx,
+    caption = "'**Top genes from SKAT-O, ranked by p-value.** Locus = Name of locus from lo-siRF analysis. Chr = Chromosome. P-value = p-value from SKAT-O.'"
+  )
+  chunk_idx <- chunk_idx + 1
+}
+```
+
+
+
+
+# Lo-siRF Permutation Test Simulations {.tabset .tabset-fade .tabset-vmodern}
+
+<div class="panel panel-default padded-panel">
+In this section, we conduct several simulations to investigate the performance and demonstrate the validity of the permutation p-values from lo-siRF. 
+</div>
+
+## P-value Calibration Simulations {.unnumbered .tabset .tabset-pills .tabset-square}
+
+<div class="panel panel-default padded-panel">
+**Calibration of p-values under null model**: In the first set of simulations, we aimed to assess whether the permutation p-values are calibrated under the null model where no epistasis is present. To this end, we simulated binary responses $y$ from a null, purely-noise model, where $y \sim Bernoulli(1/2)$. Under this null simulation setup, we generated covariates $X$ from three different data-generating processes:
+
+<ol type="A">
+<li>Independent normal: $X_{ij} \stackrel{iid}{\sim} N(0, 1)$ for $i = 1, \ldots, n$ and $j = 1, \ldots, p$.</li>
+<li>Independent SNPs: $X_{ij}$ iid from $\{0, 1, 2\}$ with uniform probabilities for $i = 1, \ldots, n$ and $j = 1, \ldots, p$.</li>
+<li>Real-world SNPs: The $n \times p$ matrix $X$ is taken to be the GWAS-filtered SNV matrix used in lo-siRF. In this case, we we randomly subsampled the features and the columns to meet the desired dimensions of $n$ and $p$.</li>
+</ol>
+
+Under each of these three settings, we ran the simulated data through a simplified lo-siRF pipeline, where we:
+
+1. Split the data into two partition (2/3 training and 1/3 validation).
+2. Fit siRF on the training data to obtain a list of candidate interactions.
+3. For each of the interactions from step 2, evaluate the local stability importance scores and compute the associated permutation p-value using the validation data.
+
+In simulations (A) and (B), we searched for interactions at the level of individual features (or SNVs), rather than a group of features (or genes). This was done to simplify the simulation setup and interpretation of results, given that the features were simulated independently. For simulation setup (C), we leveraged the same SNV-to-gene mapping used previously in lo-siRF and searched for interactions at the gene level.
+
+We also note that the simplified lo-siRF pipeline omits the interaction filtering step based upon their siRF stability scores. This was done because the interaction filtering step excludes almost all non-relevant candidate interactions under the simulation setup. In particular, under the null simulation model, the interaction filtering (using the recommended thresholds from the original siRF paper [@kumbier2018refining]) removed all but 2 interactions across 200 simulated data replicates. Given our goal of assessing whether the permutation p-values are calibrated, we will focus our evaluation on the permutation p-values from all candidate interactions in this setting regardless of whether the interactions passed the stability filtering. 
+
+**Results**: In Figure \@ref(fig:subchunk-92) below, we plot the proportion of rejected null hypotheses across different significance levels $\alpha$ under the aforementioned null simulation setup. We found that the observed type I error of our permutation test closely aligns with the significance level $\alpha$, thereby confirming that the p-values are calibrated. Moreover, these results hold across different sample sizes, number of features, and all three data-generating processes for X.
+</div>
+
+```{r perm-test-simulations, results = "asis"}
+dgp_names <- c(
+  "Gaussian X",
+  "Real SNP X",
+  "SNP X",
+  "SNP X (order 1)",
+  "SNP X (order 2)"
+)
+null_dgp_names <- c(
+  "Gaussian X",
+  "SNP X",
+  "Real SNP X"
+)
+fit_results_ls <- list()
+for (dgp_name in dgp_names) {
+  num_features <- dplyr::case_when(
+    dgp_name == "Real SNP X" ~ 500,
+    TRUE ~ 100
+  )
+  fit_results_ls[[dgp_name]] <- readRDS(
+    file.path(
+      res_dir, "Permutation Validity", dgp_name, "Varying n", "fit_results.rds"
+    )
+  ) |> 
+    dplyr::mutate(p = num_features)
+}
+
+# calibration plot
+alphas <- seq(0, 1, by = 0.01)
+plt_df <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") |>
+  tidyr::unnest(result) |> 
+  dplyr::group_by(dgp_name, n, p) |>
+  dplyr::summarise(
+    alpha = tibble::tibble(
+      alpha = alphas,
+      reject_prob = purrr::map_dbl(alphas, ~ mean(pval < .x))
+    ) |>
+      list(),
+    .groups = "drop"
+  ) |>
+  tidyr::unnest(alpha) |>
+  dplyr::mutate(
+    setting = sprintf("Num. Samples = %s\nNum. Features = %s", n, p)
+  )
+plt_ls <- list()
+for (dgp_name in null_dgp_names) {
+  plt_ls[[dgp_name]] <- plt_df |>
+    dplyr::filter(
+      dgp_name == !!dgp_name
+    ) |> 
+    dplyr::mutate(
+      dgp_name = stringr::str_replace(dgp_name, "SNP", "SNV")
+    ) |> 
+    ggplot2::ggplot() +
+    ggplot2::aes(
+      x = alpha, y = reject_prob
+    ) +
+    ggplot2::geom_line() +
+    ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    ggplot2::facet_grid(dgp_name ~ setting) +
+    ggplot2::labs(
+      x = "Significance Level (alpha)",
+      y = "Proportion of Rejected Null Hypotheses",
+    ) +
+    vthemes::theme_vmodern()
+}
+plt <- patchwork::wrap_plots(plt_ls, ncol = 1) +
+  patchwork::plot_layout(axes = "collect")
+subchunkify(
+  plt,
+  i = chunk_idx, 
+  fig_height = 6.5,
+  fig_width = 8,
+  add_class = c("panel panel-default"),
+  other_args = "out.width='100%'",
+  caption = "'Proportion of rejected null hypotheses across varying significance levels under the null simulation response model are represented by the solid black line. Dotted line represents a perfectly calibrated hypothesis test (i.e., the y = x line). Each row corresponds to a different data-generating process for X, and each column corresponds to a different choice of number of samples. Results are aggregated across 200 simulation replicates.'"
+)
+chunk_idx <- chunk_idx + 1
+cat("\n\n")
+```
+
+## Marginal and Interaction Effect Simulations {.unnumbered .tabset .tabset-pills .tabset-square}
+
+<div class="panel panel-default padded-panel">
+**Marginal and Interaction Effect Simulations**: Moving beyond this basic calibration investigation and the null, purely-noise model, we were more interested in studying the broader performance of lo-siRF and the permutation test. To this end, we conducted two additional simulations using boolean-type rules. We note that the boolean-type rules were chosen as they have been extensively studied in previous RF-based work and are thought to closely resemble the switch-like and stereospecific nature of interactions among biomolecules [@nelson2008lehninger; @kumbier2018refining; @behr2020learning]. Specifically, we first simulated the $X$ data from independent SNVs, where $X_{ij}$ is simulated iid from $\{0, 1, 2\}$ with uniform probabilities. Next, we simulated binary responses $y \mid X \sim Bernoulli(p(X))$ via:
+
+<ol type="A" start="4">
+<li>Marginal effect model: $p(X) = 0.4 \cdot \mathbf{1}\{X_1 > 0\} + 0.4 \cdot \mathbf{1}\{X_2 > 0\}$</li>
+<ul>
+<li> In this model, there are no true interactions.</li>
+</ul>
+<li>Interaction effect model: $p(X) = 0.4 \cdot \mathbf{1}\{X_1 > 0\} \mathbf{1}\{X_2 > 0\} + 0.4 \cdot \mathbf{1}\{X_3 > 0\} \mathbf{1}\{X_4 > 0\}$</li>
+<ul>
+<li> In this model, the true interactions are $X_1:X_2$ and $X_3:X_4$.</li>
+</ul>
+</ol>
+
+We set the number of features to 100 and varied the number of samples across n = 1000, 1500, 2000. For each simulation model and choice of sample size, we ran 200 simulation replicates.
+
+**Results**: The simulation results are summarized in Table \@ref(fig:subchunk-93) below. In what follows, we define "partial interaction" as a candidate interaction that involves at least one true signal feature from an interaction that appeared in the simulation model --- specifically, at least one of $X_1$ or $X_2$ in the marginal effect simulation (D), or at least one of $X_1$, $X_2$, $X_3$, or $X_4$ in the interaction effect simulation (E). We define "true interaction" as a candidate interaction that involves both $X_1$ and $X_2$ or both $X_3$ and $X_4$ in the interaction effect simulation. 
+
+The main takeaways from these simulations are:
+
+1. Under both the marginal effect and interaction effect scenarios, the candidate interactions from siRF almost always include at least one true signal feature (and equivalently, is a partial interaction).
+
+    - Specifically, under both the marginal effect (D) and interaction effect (E) scenarios, over 99% of the candidate interactions identified by siRF were found to be "partial interactions" (the 5th column in Table \@ref(fig:subchunk-93)). Moreover, under the interaction effect (E) simulation, over 38% of the candidate interactions identified by siRF were "true interactions" (the 4th column in Table \@ref(fig:subchunk-93)). 
+
+2. The interaction filtering step within siRF, where we filter out candidate interactions that do not meet the siRF stability thresholds, is both necessary and effective at distinguishing between interactions and marginal effects.
+
+    - First, the siRF interaction filtering is necessary to differentiate between interactions and marginal effects since the permutation test itself is not designed to distinguish between "true interactions" and "partial interactions."
+    
+        - Because the permutation test within lo-siRF formally assesses whether the local stability importance of an interaction differs between the high and low LVMi groups, any candidate interaction involving at least one true signal feature (i.e., any partial interaction) is expected to show a difference between the two groups and result in a significant p-value. Our results support this expectation. In both the interaction and marginal simulation models, an overwhelming majority (>99%) of the permutation tests led to a significant p-value (p < 0.05) (the last column in Table \@ref(fig:subchunk-93)). This is expected since each of these tested interactions was a partial interaction and involved at least one true signal feature (the 8th column in Table \@ref(fig:subchunk-93)).
+        - We thus relied on the siRF interaction filtering step to distinguish between marginal and true interaction effects. This siRF interaction filtering step is detailed in the Methods section *Lo-siRF step 4.3: Permutation test for difference in local stability importance scores* in [@wang2023epistasis](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1). Specifically, the feature selection dependence threshold (discussed in greater detail in the original siRF paper [@kumbier2018refining]) was originally designed to differentiate between additive (e.g., marginal) and non-additive (e.g., interaction) effects. This metric showed strong performance in empirical simulations from the original siRF paper.
+        
+    - As in the original siRF paper, the siRF interaction filtering demonstrated similarly strong effectiveness for distinguishing between true interactions and true marginal effects under our simulation setup.
+    
+        - In particular, under the interaction simulation model, the siRF interaction filtering step reduced the number of interactions from over 3000 candidates (the 3rd column in Table \@ref(fig:subchunk-93)), of which $\sim$ 40% were true interactions (4th column), to ~1300 candidates (6th column). Of these remaining $\sim$ 1300 candidates, 87%, 99%, and 100% were true interactions in the n = 1000, 1500, and 2000 simulations, respectively (the 7th column). 
+        - Furthermore, under the marginal simulation model, the siRF interaction filtering step reduced the number of interactions from over 4400 candidates (the 3rd column in Table \@ref(fig:subchunk-93)) to fewer than 100 candidates (4th column). That is, less than 2% of the candidate interactions remain after the siRF interaction filtering step in the marginal effect simulation setting.
+        
+    - Thus, even though the permutation test rejects most tests involving partial interactions, in lo-siRF, the permutation test occurs after the siRF interaction filtering, which we have shown to effectively eliminate the vast majority of non-signal or partial interactions.
+</div>
+
+```{r perm-test-simulations-2, results = "asis"}
+# marginal and interaction simulations
+left_join_with_na <- function(x, y, by) {
+  if (!is.null(x) && !is.null(y)) {
+    dplyr::left_join(x, y, by = by)
+  } else if (!is.null(x)) {
+    x
+  } else {
+    NULL
+  }
+}
+
+tab <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") |>
+  dplyr::filter(
+    stringr::str_detect(.dgp_name, "order")
+  ) |> 
+  dplyr::rowwise() |> 
+  dplyr::mutate(
+    result = list(left_join_with_na(int_df, result, by = "int"))
+  ) |> 
+  dplyr::ungroup() |> 
+  tidyr::unnest(result) |> 
+  dplyr::mutate(
+    int_vec = stringr::str_remove_all(int, "[[+/-]]") |> 
+      stringr::str_split("_"),
+    true_feat = purrr::map2_lgl(
+      int_vec, .dgp_name,
+      function(.x, .y) {
+        if (.y == "SNP X (order 2)") {
+          ("X1" %in% .x) || ("X2" %in% .x) || ("X3" %in% .x) || ("X4" %in% .x)
+        } else if (.y == "SNP X (order 1)") {
+          ("X1" %in% .x) || ("X2" %in% .x)
+        } else {
+          FALSE
+        }
+      }
+    ),
+    true_int = purrr::map2_lgl(
+      int_vec, .dgp_name,
+      function(.x, .y) {
+        if (.y == "SNP X (order 2)") {
+          (("X1" %in% .x) && ("X2" %in% .x)) ||
+            (("X3" %in% .x) && ("X4" %in% .x))
+        } else {
+          FALSE
+        }
+      }
+    ),
+    tested_int = !is.na(pval)
+  ) |> 
+  dplyr::group_by(
+    dgp_name, n, p
+  ) |>
+  dplyr::summarise(
+    `# Candidate Interactions from siRF` = dplyr::n(),
+    `Prop. (Num.) of True Interactions in Candidate Set` = 
+      sprintf("%.3f (%s)", sum(true_int) / dplyr::n(), sum(true_int)),
+    `Prop. (Num.) of Partial Interactions in Candidate Set` = 
+      sprintf("%.3f (%s)", sum(true_feat) / dplyr::n(), sum(true_feat)),
+    `Prop. (Num.) of Stable Interactions in Candidate Set` = 
+      sprintf("%.3f (%s)", sum(tested_int) / dplyr::n(), sum(tested_int)),
+    `Prop. (Num.) of True Interactions in Stable Set` = 
+      sprintf(
+        "%.2f (%s)", 
+        sum(true_int & tested_int) / sum(tested_int),
+        sum(true_int & tested_int)
+      ),
+    `Prop. (Num.) of Partial Interactions in Stable Set` = 
+      sprintf(
+        "%.2f (%s)", 
+        sum(true_feat & tested_int) / sum(tested_int),
+        sum(true_feat & tested_int)
+      ),
+    `# Interactions Rejected (p < 0.05)` = 
+      sprintf(
+        "%s (out of %s tests)", 
+        sum(pval <= 0.05, na.rm = TRUE), 
+        sum(!is.na(pval))
+      ),
+    .groups = "drop"
+  ) |> 
+  dplyr::mutate(
+    dgp_name = dplyr::case_when(
+      dgp_name == "SNP X (order 1)" ~ "Marginal Model",
+      dgp_name == "SNP X (order 2)" ~ "Interaction Model"
+    ) |> 
+      factor(levels = c("Interaction Model", "Marginal Model"))
+  ) |> 
+  dplyr::arrange(dgp_name) |> 
+  dplyr::rename(
+    "Simulation Name" = dgp_name,
+    `Num. Samples` = n
+  ) |> 
+  dplyr::select(-p)
+subchunkify(
+  vthemes::pretty_DT(
+    tab, rownames = FALSE, options = list(dom = "t", ordering = FALSE)
+  ), 
+  i = chunk_idx,
+  caption = "'Summary of marginal and interaction effect simulations. # Candidate Interactions from siRF: The total number of interactions identified by siRF before applying the stability filtering step. Prop. (Num.) of True Interactions in Candidate Set: The proportion (or number) of true interactions out of the total number of candidate interactions from siRF. Prop. (Num.) of Partial Interactions in Candidate Set: The proportion (or number) of partial interactions out of the total number of candidate interactions from siRF. Prop. (Num.) of Stable Interactions in Candidate Set: The proportion (or number) of interactions that passed the stability filter step out of the total number of candidate interactions from siRF. Prop. (Num.) of True Interactions in Stable Set: The proportion (or number) of true interactions out of the total number of interactions that passed the stability filter. Prop. (Num.) of Partial Interactions in Stable Set: The proportion (or number) of partial interactions out of the total number of interactions that passed the stability filter. # Interactions Rejected (p < 0.05): The number of stable (or tested) interactions with a permutation test p-value below 0.05.'"
+)
+chunk_idx <- chunk_idx + 1
+cat("\n\n")
+```
 
 
 # Final Remarks
