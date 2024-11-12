@@ -2178,14 +2178,14 @@ We note however that the *MIR588;RSPO3* locus with lead SNV rs2022479 gave the s
 ```{r htn-gwas, results = "asis"}
 if (!params$eval) {
   display_image(
-    file.path(res_dir, "no_HTN", "fuma_gwas", "manhattan_FUMA_jobs453594_edited.png"),
+    file.path(res_dir, "no_htn", "fuma_gwas", "manhattan_FUMA_jobs453594_edited.png"),
     chunk_idx = chunk_idx,
     caption = "'Manhattan plot for the association between the 1405 GWAS-filtered SNVs used in the original lo-siRF analysis and hypertension.'"
   )
   chunk_idx <- chunk_idx + 1
 
   htn_gwas_results <- data.table::fread(
-    file.path(res_dir, "no_HTN", "htn_gwas_results_full.csv")
+    file.path(res_dir, "no_htn", "htn_gwas_results_full.csv")
   )
   tab <- htn_gwas_results %>%
     dplyr::select(rsID, Chr, Pos = `hg19 Pos`, `Lo-siRF Locus` = Gene, p = p.value) %>%
@@ -2795,7 +2795,7 @@ pheno_names <- c(
 
 if (params$eval) {
   maf_df <- data.table::fread(
-    file.path(data_dir, "plink_data", "HTN_training.frq")
+    file.path(data_dir, "maf.frq")
   ) %>%
     tibble::as_tibble()
   rm_snps <- maf_df %>%

@@ -4,5 +4,5 @@
 thrs=("_binary_thr0.15" "_binary_thr0.2" "_binary_thr0.25")
 nsnps=1000
 for thr in "${thrs[@]}"; do
-	Rscript 04_sirf_local_stability.R "iLVM"${thr} ${nsnps} >& "04_sirf_local_stability_iLVM"${thr}".out"
+	Rscript sirf_local_stability_no_hypertension.R "iLVM"${thr} ${nsnps} >& "sirf_local_stability_no_hypertension_iLVM"${thr}".out"
 done
