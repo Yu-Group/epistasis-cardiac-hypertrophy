@@ -25,17 +25,15 @@ stability.}
 \item{y}{Vector of observed responses in the same order as the rows of
 \code{X}. Must be binary vector with 0s and 1s.}
 
-\item{k}{Number of top features to return. Must provide either \code{k} or
-\code{min_stability}. If both \code{k} and \code{min_stability} are
-\code{NULL}, a data frame with all features along with their average local
-stability importance is returned.}
+\item{k}{Number of top features to return. If both \code{k} and
+\code{min_stability} are \code{NULL}, a data frame with all features along
+with their average local stability importance is returned.}
 
 \item{min_stability}{Minimum threshold for the average local stability
 importance. Any feature with a lower average local stability importance
-will be filtered out. Only used if \code{k} is \code{NULL}. Must provide
-either \code{k} or \code{min_stability}. If both \code{k} and
-\code{min_stability} are \code{NULL}, a data frame with all features along
-with their average local stability importance is returned.}
+will be filtered out. Only used if \code{k} is \code{NULL}. If both
+\code{k} and \code{min_stability} are \code{NULL}, a data frame with all
+features along with their average local stability importance is returned.}
 
 \item{features}{Vector of (signed) features, for which to evaluate stability.
 Default (\code{NULL}) is to evaluate the local feature stability for all

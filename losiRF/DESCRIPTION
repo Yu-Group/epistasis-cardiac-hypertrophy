@@ -19,6 +19,7 @@ Imports:
     ranger,
     stringr,
     tibble,
+    tidyr,
     tidyselect
-Remotes:  
+Remotes: 
     karlkumbier/iRF2.0
