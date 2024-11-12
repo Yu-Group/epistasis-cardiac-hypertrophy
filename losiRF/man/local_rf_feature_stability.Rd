@@ -19,7 +19,7 @@ the output of \code{\link[ranger:ranger]{ranger::ranger()}}).}
 \item{X}{Data frame of sample design matrix, used to evaluate local feature
 stability.}
 
-\item{features}{Vector of features, for which to evaluate stability.
+\item{features}{Vector of (signed) features, for which to evaluate stability.
 Default (\code{NULL}) is to evaluate the local feature stability for all
 features in \code{X}.}
 

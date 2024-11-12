@@ -1,11 +1,11 @@
-#' Removes sign information from interactions
+#' Removes sign information from features/interactions
 #'
-#' @param x A character vector of interactions
+#' @param x A character vector of signed features or interactions
 #'
 #' @return A character vector of interactions without sign information
 #'
 #' @keywords internal
-clean_ints <- function(x) {
+remove_signs <- function(x) {
   return(stringr::str_remove_all(x, "[-\\+]"))
 }
 

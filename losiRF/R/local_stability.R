@@ -7,10 +7,10 @@
 #'   stability.
 #' @param y Vector of observed responses in the same order as the rows of
 #'   \code{X}. Must be binary vector with 0s and 1s.
-#' @param features Vector of features, for which to evaluate stability.
+#' @param features Vector of (signed) features, for which to evaluate stability.
 #'   Default (\code{NULL}) is to evaluate the local feature stability for all
 #'   features in \code{X}.
-#' @param ints Vector of interactitons to evaluate local stability.
+#' @param ints Vector of (signed) interactions to evaluate local stability.
 #' @param feature_groups Data frame of feature-to-group/superfeature mapping.
 #'   Should have the two columns: "feature" and "group". Default (\code{NULL})
 #'   performs no grouping so that each feature is its own group.
@@ -49,8 +49,9 @@ local_rf_stability_importance <- function(rf_fit, X, y,
       stop("feature_groups must have columns 'feature' and 'group'.")
     }
   }
-  if (!is.null(features) && !isTRUE(all(features %in% colnames(X)))) {
-    stop("features must be a subset of colnames(X).")
+  if (!is.null(features) && 
+      !isTRUE(all(remove_signs(features) %in% colnames(X)))) {
+    stop("(unsigned) features must be a subset of colnames(X).")
   }
 
   # compute local stability importance for features
@@ -106,6 +107,76 @@ local_rf_stability_importance <- function(rf_fit, X, y,
 }
 
 
+#' Get most stable features according to average local stability importance
+#' 
+#' @inheritParams local_rf_stability_importance
+#' @param k Number of top features to return. If both \code{k} and 
+#'   \code{min_stability} are \code{NULL}, a data frame with all features along 
+#'   with their average local stability importance is returned.
+#' @param min_stability Minimum threshold for the average local stability 
+#'   importance. Any feature with a lower average local stability importance
+#'   will be filtered out. Only used if \code{k} is \code{NULL}. If both 
+#'   \code{k} and \code{min_stability} are \code{NULL}, a data frame with all 
+#'   features along with their average local stability importance is returned.
+#'   
+#' @returns If \code{k} and \code{min_stability} are \code{NULL}, returns data 
+#'   frame with all features along with their average local stability 
+#'   importance, which can be used to rank the features manually. Otherwise,
+#'   returns vector of the most stable features.
+#'   
+#' @export
+get_top_stable_features <- function(rf_fit, X, y, 
+                                    k = NULL, min_stability = NULL,
+                                    features = NULL,
+                                    feature_groups = NULL,
+                                    first_only = FALSE) {
+  if (!inherits(rf_fit, "ranger")) {
+    stop("rf_fit must be of class 'ranger'.")
+  }
+  if (!is.null(feature_groups)) {
+    if (!isTRUE(all(c("feature", "group") %in% colnames(feature_groups)))) {
+      stop("feature_groups must have columns 'feature' and 'group'.")
+    }
+  }
+  if (!is.null(features) && 
+      !isTRUE(all(remove_signs(features) %in% colnames(X)))) {
+    stop("(unsigned) features must be a subset of colnames(X).")
+  }
+  
+  # compute local stability importance for features
+  feature_stability_df <- local_rf_feature_stability(
+    rf_fit = rf_fit, X = X, features = features,
+    feature_groups = feature_groups, first_only = first_only
+  ) |>
+    dplyr::summarise(
+      dplyr::across(
+        tidyselect::everything(),
+        ~ mean(.x)
+      )
+    ) |>
+    tidyr::pivot_longer(
+      cols = tidyselect::everything(), 
+      names_to = "feature", 
+      values_to = "stability"
+    ) |>
+    dplyr::arrange(
+      dplyr::desc(stability)
+    )
+  
+  if (is.null(k) && is.null(min_stability)) {
+    return(feature_stability_df)
+  } else if (!is.null(k)) {
+    return(feature_stability_df$feature[1:k])
+  } else {
+    return(
+      feature_stability_df |> 
+        dplyr::filter(stability > min_stability) |>
+        dplyr::pull(feature)
+    )
+  }
+}
+
+
 #' Compute local feature stability scores in a random forest.
 #'
 #' @inheritParams local_rf_stability_importance
@@ -127,8 +198,9 @@ local_rf_feature_stability <- function(rf_fit, X,
       stop("feature_groups must have columns 'feature' and 'group'.")
     }
   }
-  if (!is.null(features) && !isTRUE(all(features %in% colnames(X)))) {
-    stop("features must be a subset of colnames(X).")
+  if (!is.null(features) && 
+      !isTRUE(all(remove_signs(features) %in% colnames(X)))) {
+    stop("(unsigned) features must be a subset of colnames(X).")
   }
 
   ntrees <- rf_fit$num.trees
@@ -173,7 +245,7 @@ local_rf_feature_stability <- function(rf_fit, X,
         function(x, y) {
           unique_path <- rev(unique(x[[as.character(y)]]))
           if (first_only) {
-            rm_ids <- duplicated(clean_ints(unique_path))
+            rm_ids <- duplicated(remove_signs(unique_path))
             unique_path <- unique_path[!rm_ids]
           }
           return(unique_path)
@@ -248,7 +320,7 @@ local_rf_int_stability <- function(rf_fit, X, ints,
         function(x, y) {
           unique_path <- rev(unique(x[[as.character(y)]]))
           if (first_only) {
-            rm_ids <- duplicated(clean_ints(unique_path))
+            rm_ids <- duplicated(remove_signs(unique_path))
             unique_path <- unique_path[!rm_ids]
           }
           purrr::map_lgl(ints, ~all(.x %in% unique_path))

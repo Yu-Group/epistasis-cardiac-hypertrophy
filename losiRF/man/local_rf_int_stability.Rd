@@ -19,7 +19,7 @@ the output of \code{\link[ranger:ranger]{ranger::ranger()}}).}
 \item{X}{Data frame of sample design matrix, used to evaluate local feature
 stability.}
 
-\item{ints}{Vector of interactitons to evaluate local stability.}
+\item{ints}{Vector of (signed) interactions to evaluate local stability.}
 
 \item{feature_groups}{Data frame of feature-to-group/superfeature mapping.
 Should have the two columns: "feature" and "group". Default (\code{NULL})

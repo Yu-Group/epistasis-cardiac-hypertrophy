@@ -26,11 +26,11 @@ stability.}
 \item{y}{Vector of observed responses in the same order as the rows of
 \code{X}. Must be binary vector with 0s and 1s.}
 
-\item{features}{Vector of features, for which to evaluate stability.
+\item{features}{Vector of (signed) features, for which to evaluate stability.
 Default (\code{NULL}) is to evaluate the local feature stability for all
 features in \code{X}.}
 
-\item{ints}{Vector of interactitons to evaluate local stability.}
+\item{ints}{Vector of (signed) interactions to evaluate local stability.}
 
 \item{feature_groups}{Data frame of feature-to-group/superfeature mapping.
 Should have the two columns: "feature" and "group". Default (\code{NULL})
