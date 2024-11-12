@@ -4,6 +4,8 @@
 # losiRF
 
 <!-- badges: start -->
+
+[![R-CMD-check](https://github.com/Yu-Group/epistasis-cardiac-hypertrophy/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Yu-Group/epistasis-cardiac-hypertrophy/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 The losiRF R package provides tools to compute the local stability
@@ -22,6 +24,12 @@ You can install the development version of losiRF from
 remotes::install_github("Yu-Group/epistasis-cardiac-hypertrophy", subdir = "losiRF")
 ```
 
+This package has been tested on the following operating systems:
+
+-   MacOS (latest release: 14.7)
+-   Windows (latest release: 10.0.20348)
+-   Ubuntu (latest release: 22.04.5)
+
 ## Examples
 
 This is a basic example which shows you how to run the lo-siRF
@@ -30,6 +38,12 @@ permutation test on simulated data:
 ``` r
 library(losiRF)
 set.seed(331)
+
+# uncomment and install iRF (if not already installed)
+# remotes::install_github("karlkumbier/iRF2.0")
+
+# time code
+start_time <- Sys.time()
 
 # simulate data
 n <- 1000
@@ -137,6 +151,10 @@ results$int_stability_pvals
 #> 15 V12-_V91- 0.518  -0.000116 <dbl [10,000]>
 #> 16 V39-_V47- 0.284   0.000875 <dbl [10,000]>
 #> 17 V30-_V47- 0.273  -0.00116  <dbl [10,000]>
+
+end_time <- Sys.time() - start_time
+print(sprintf("Time taken: %.2f %s", end_time[[1]], attr(end_time, "units")))
+#> [1] "Time taken: 5.74 mins"
 ```
 
 Note that in [Wang et
@@ -163,6 +181,12 @@ below:
 ``` r
 library(losiRF)
 set.seed(331)
+
+# uncomment and install iRF (if not already installed)
+# remotes::install_github("karlkumbier/iRF2.0")
+
+# time code
+start_time <- Sys.time()
 
 # simulate data
 n <- 1000
@@ -266,4 +290,8 @@ results$int_stability_pvals
 #> 4 V3+_V4+         0 0.298 <dbl [10,000]>
 #> 5 V1+_V3+         0 0.186 <dbl [10,000]>
 #> 6 V1+_V2+         0 0.197 <dbl [10,000]>
+
+end_time <- Sys.time() - start_time
+print(sprintf("Time taken: %.2f %s", end_time[[1]], attr(end_time, "units")))
+#> [1] "Time taken: 3.81 mins"
 ```

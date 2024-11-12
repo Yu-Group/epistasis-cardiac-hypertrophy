@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 # losiRF
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/Yu-Group/epistasis-cardiac-hypertrophy/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Yu-Group/epistasis-cardiac-hypertrophy/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 The losiRF R package provides tools to compute the local stability importances and p-values for features and interactions from a fitted random forest, as described in "Epistasis regulates genetic control of cardiac hypertrophy" by [Wang et al. (2024)](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v2).
@@ -30,6 +31,12 @@ You can install the development version of losiRF from [GitHub](https://github.c
 remotes::install_github("Yu-Group/epistasis-cardiac-hypertrophy", subdir = "losiRF")
 ```
 
+This package has been tested on the following operating systems:
+
+- MacOS (latest release: 14.7)
+- Windows (latest release: 10.0.20348)
+- Ubuntu (latest release: 22.04.5)
+
 ## Examples
 
 This is a basic example which shows you how to run the lo-siRF permutation test on simulated data:
@@ -37,6 +44,12 @@ This is a basic example which shows you how to run the lo-siRF permutation test 
 ```{r basic-example}
 library(losiRF)
 set.seed(331)
+
+# uncomment and install iRF (if not already installed)
+# remotes::install_github("karlkumbier/iRF2.0")
+
+# time code
+start_time <- Sys.time()
 
 # simulate data
 n <- 1000
@@ -82,6 +95,9 @@ results$feature_stability_pvals
 
 # lo-siRF interaction importance results
 results$int_stability_pvals
+
+end_time <- Sys.time() - start_time
+print(sprintf("Time taken: %.2f %s", end_time[[1]], attr(end_time, "units")))
 ```
 
 Note that in [Wang et al. (2024)](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v2), the lo-siRF importances and permutation tests involved additional steps and preprocessing that are not included in this basic example. These additional steps include data preprocessing and dimension reduction prior to fitting the iterative random forest, a thorough prediction check to ensure that the fitted forest is indeed an appropriate fit for the given data, the grouping of SNV *features* into gene *groups* (which can be specified using the `feature_groups` argument in `local_rf_stability_importance()`), and careful screening/filtering of the features (i.e., genes) and interactions prior to conducting the permutation test. We refer interested readers to the original paper ([Wang et al. (2024)](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v2)) for more details and the [01_lo-siRF/scripts/](./01_lo-siRF/scripts) folder for scripts to reproduce our original lo-siRF analysis.
@@ -91,6 +107,12 @@ We also provide an example which includes screening/filtering of features and in
 ```{r advanced-example}
 library(losiRF)
 set.seed(331)
+
+# uncomment and install iRF (if not already installed)
+# remotes::install_github("karlkumbier/iRF2.0")
+
+# time code
+start_time <- Sys.time()
 
 # simulate data
 n <- 1000
@@ -154,6 +176,9 @@ results$feature_stability_pvals
 
 # lo-siRF interaction importance results
 results$int_stability_pvals
+
+end_time <- Sys.time() - start_time
+print(sprintf("Time taken: %.2f %s", end_time[[1]], attr(end_time, "units")))
 ```
 
 
