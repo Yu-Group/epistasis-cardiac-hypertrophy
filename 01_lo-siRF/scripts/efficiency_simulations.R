@@ -46,11 +46,11 @@ efficiency_dgp_fun <- function(n, beta0, beta1, beta2, beta12,
 quant_reg_fun <- function(x, y, tau = 0.5, min_thr = 1e-16, ...) {
   fit_df <- data.frame(.y = y, x)
   fit <- quantreg::rq(formula = .y ~ X1 * X2, tau = tau, data = fit_df)
-  fit_summary <- summary(fit, se = "boot")$coefficients |>
-    as.data.frame() |>
-    tibble::rownames_to_column("Term") |>
-    dplyr::rename(Coefficient = Value) |>
-    dplyr::filter(Term == "X1:X2") |>
+  fit_summary <- summary(fit, se = "boot")$coefficients %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Term") %>%
+    dplyr::rename(Coefficient = Value) %>%
+    dplyr::filter(Term == "X1:X2") %>%
     dplyr::mutate(`Pr(>|t|)` = max(min_thr, `Pr(>|t|)`))
   return(fit_summary)
   # return(broom::tidy(fit_summary))
@@ -77,10 +77,10 @@ fi_pval <- create_evaluator(
 plot_results <- function(fit_results = NULL, eval_results, vary_params = NULL,
                          eval_name, eval_id, add_ggplot_layers = NULL) {
   vary_params <- unique(vary_params)
-  plt_df <- eval_results[[eval_name]] |>
+  plt_df <- eval_results[[eval_name]] %>%
     dplyr::filter(!is.na(!!rlang::sym(vary_params)))
-  plt <- plt_df |>
-    tidyr::unnest(cols = tidyselect::all_of(sprintf("raw_%s", eval_id))) |>
+  plt <- plt_df %>%
+    tidyr::unnest(cols = tidyselect::all_of(sprintf("raw_%s", eval_id))) %>%
     vdocs::plot_boxplot(
       x_str = vary_params, y_str = sprintf("raw_%s", eval_id)
     ) +
@@ -186,23 +186,23 @@ for (exp_name in names(experiment_config_ls)) {
   experiment <- create_experiment(
     name = experiment_name,
     save_dir = file.path(RESULTS_DIR, experiment_name)
-  ) |>
-    add_dgp(dgp) |>
-    add_method(quant_reg) |>
-    add_evaluator(fi_pval) |>
+  ) %>%
+    add_dgp(dgp) %>%
+    add_method(quant_reg) %>%
+    add_evaluator(fi_pval) %>%
     add_visualizer(fi_pval_plot)
   
   # vary across beta12 signal
-  results <- experiment |>
-    add_vary_across(.dgp = dgp$name, beta12 = beta12s) |>
+  results <- experiment %>%
+    add_vary_across(.dgp = dgp$name, beta12 = beta12s) %>%
     run_experiment(
       n_reps = n_reps, save = SAVE, use_cached = USE_CACHED
     )
   
   # vary across noise levels
-  results <- experiment |>
-    remove_vary_across() |>
-    add_vary_across(.dgp = dgp$name, sd = noise_sds) |>
+  results <- experiment %>%
+    remove_vary_across() %>%
+    add_vary_across(.dgp = dgp$name, sd = noise_sds) %>%
     run_experiment(
       n_reps = n_reps, save = SAVE, use_cached = USE_CACHED
     )

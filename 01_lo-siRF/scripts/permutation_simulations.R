@@ -42,9 +42,9 @@ generate_interaction <- function(X, int_order = 0, num_int = 0, beta = 0.4) {
       ~ apply(
         X[, (.x * int_order + 1):(.x * int_order + int_order), drop = FALSE] > 0, 1, all
       ) * beta
-    ) |>
-      setNames(paste0("X", 1:num_int)) |>
-      dplyr::bind_cols() |>
+    ) %>%
+      setNames(paste0("X", 1:num_int)) %>%
+      dplyr::bind_cols() %>%
       rowSums()
   } else {
     prob <- beta
@@ -84,12 +84,12 @@ snp_X_rwd_dgp_fun <- function(n, p, int_order = 0, num_int = 0, beta = 0.4) {
   #   function(fdir) {
   #     fpheno <- str_remove(pheno_name, "_binary_thr.*$")
   #     fpath <- file.path(fdir, paste0(fpheno, "_norm.stats_annot"))
-  #     snps <- fread(fpath) |>
-  #       slice(1:nsnps) |>
+  #     snps <- fread(fpath) %>%
+  #       slice(1:nsnps) %>%
   #       pull(SNP)
   #   }
-  # ) |>
-  #   purrr::reduce(c) |>
+  # ) %>%
+  #   purrr::reduce(c) %>%
   #   unique()
   # 
   # # load data
@@ -103,16 +103,16 @@ snp_X_rwd_dgp_fun <- function(n, p, int_order = 0, num_int = 0, beta = 0.4) {
   # 
   # # only keep genes with > 10 snps
   # snps_df <- loadSNPInfo(colnames(out$geno_train))
-  # keep_genes <- snps_df |>
-  #   dplyr::group_by(Gene) |>
+  # keep_genes <- snps_df %>%
+  #   dplyr::group_by(Gene) %>%
   #   dplyr::summarise(
   #     n_snps = dplyr::n()
-  #   ) |>
+  #   ) %>%
   #   dplyr::filter(
   #     n_snps >= 10
-  #   ) |>
+  #   ) %>%
   #   dplyr::pull(Gene)
-  # keep_snps_df <- snps_df |>
+  # keep_snps_df <- snps_df %>%
   #   dplyr::filter(Gene %in% keep_genes)
   # saveRDS(keep_snps_df, file.path(DATA_DIR, "snps_df_abridged.rds"))
   
@@ -120,14 +120,14 @@ snp_X_rwd_dgp_fun <- function(n, p, int_order = 0, num_int = 0, beta = 0.4) {
   snps_df <- readRDS(file.path(DATA_DIR, "snps_df_abridged.rds"))
   data_out <- readRDS(file.path(DATA_DIR, "iLVM_norm_data.rds"))
   keep_samples <- sample(1:nrow(data_out$geno_train), size = n, replace = FALSE)
-  keep_snps_df <- snps_df |>
-    dplyr::slice_sample(n = p) |>
-    dplyr::group_by(Gene) |>
+  keep_snps_df <- snps_df %>%
+    dplyr::slice_sample(n = p) %>%
+    dplyr::group_by(Gene) %>%
     dplyr::mutate(
       order = 1:dplyr::n()
-    ) |>
-    dplyr::ungroup() |>
-    dplyr::arrange(order) |>
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(order) %>%
     dplyr::mutate(
       Gene = paste0("Gene", as.numeric(forcats::fct_inorder(Gene)))
     )
@@ -178,7 +178,7 @@ losirf_method_fun <- function(X, y,
     ...
   )
   
-  keep_ints <- irf_gene_out$interaction |>
+  keep_ints <- irf_gene_out$interaction %>%
     dplyr::filter(
       cpe > !!cpe_thr,
       fsd > !!fsd_thr,
@@ -187,12 +187,12 @@ losirf_method_fun <- function(X, y,
       sta.cpe > !!stability_cpe_thr,
       sta.fsd > !!stability_fsd_thr,
       sta.mip > !!stability_mip_thr
-    ) |>
+    ) %>%
     dplyr::arrange(desc(prevalence))
   
   if (nrow(keep_ints) > 0) {
     if (!is.null(max_ints)) {
-      keep_ints <- keep_ints |>
+      keep_ints <- keep_ints %>%
         dplyr::slice(1:min(dplyr::n(), max_ints))
     }
     
@@ -288,9 +288,9 @@ exp_name <- "Permutation Validity"
 ## Null - Gaussian X DGP
 experiment <- create_experiment(
   name = exp_name, save_dir = file.path(RESULTS_DIR, exp_name)
-) |>
-  add_dgp(gaussian_X_dgp) |>
-  add_method(losirf_method) |>
+) %>%
+  add_dgp(gaussian_X_dgp) %>%
+  add_method(losirf_method) %>%
   add_vary_across(
     .dgp = gaussian_X_dgp$name,
     n = c(1000, 1500, 2000)
@@ -302,9 +302,9 @@ out <- run_experiment(
 ## Null - SNP X DGP
 experiment <- create_experiment(
   name = exp_name, save_dir = file.path(RESULTS_DIR, exp_name)
-) |>
-  add_dgp(snp_X_dgp) |>
-  add_method(losirf_method) |>
+) %>%
+  add_dgp(snp_X_dgp) %>%
+  add_method(losirf_method) %>%
   add_vary_across(
     .dgp = snp_X_dgp$name,
     n = c(1000, 1500, 2000)
@@ -316,9 +316,9 @@ out <- run_experiment(
 ## Null - Real SNP X DGP
 experiment <- create_experiment(
   name = exp_name, save_dir = file.path(RESULTS_DIR, exp_name)
-) |>
-  add_dgp(snp_X_rwd_dgp) |>
-  add_method(losirf_method) |>
+) %>%
+  add_dgp(snp_X_rwd_dgp) %>%
+  add_method(losirf_method) %>%
   add_vary_across(
     .dgp = snp_X_rwd_dgp$name,
     n = c(1000, 2000, 3000)
@@ -330,9 +330,9 @@ out <- run_experiment(
 ## Marginal - SNP X DGP
 experiment <- create_experiment(
   name = exp_name, save_dir = file.path(RESULTS_DIR, exp_name)
-) |>
-  add_dgp(snp_X_dgp1) |>
-  add_method(losirf_filter_method) |>
+) %>%
+  add_dgp(snp_X_dgp1) %>%
+  add_method(losirf_filter_method) %>%
   add_vary_across(
     .dgp = snp_X_dgp1$name,
     n = c(1000, 2000, 3000)
@@ -344,9 +344,9 @@ out <- run_experiment(
 ## Interaction - SNP X DGP
 experiment <- create_experiment(
   name = exp_name, save_dir = file.path(RESULTS_DIR, exp_name)
-) |>
-  add_dgp(snp_X_dgp2) |>
-  add_method(losirf_filter_method) |>
+) %>%
+  add_dgp(snp_X_dgp2) %>%
+  add_method(losirf_filter_method) %>%
   add_vary_across(
     .dgp = snp_X_dgp2$name,
     n = c(1000, 2000, 3000)
