@@ -10,7 +10,7 @@ In summary, we developed an end-to-end pipeline to demonstrate the role of epist
 
 - **[losiRF](./losiRF)**: R package to run low-signal signed iterative random forest (lo-siRF) pipeline
 - **[01_lo-siRF/](./01_lo-siRF/)**: code to reproduce manuscript results and run low-signal signed iterative random forest (lo-siRF) given SNV and phenotype data as input
-	- [dependencies.txt](./01_lo-siRF/dependencies.txt): dependency requirements to run lo-siRF pipeline
+	- [renv.lock](./01_lo-siRF/renv.lock): dependency requirements to run lo-siRF pipeline; run `renv::restore()` to restore the reproducible environment
 	- **[functions/](./01_lo-siRF/functions)**: contains helper functions to run lo-siRF analysis scripts
 	- **[rmd/](./01_lo-siRF/rmd)**: contains files to reproduce [supplementary PCS R Markdown documentation](https://yu-group.github.io/epistasis-cardiac-hypertrophy/)
 	- **[scripts/](./01_lo-siRF/scripts)**: contains scripts to run lo-siRF analysis (note: these scripts should be run in their numbered order via the corresponding \*.sh files; unnumbered scripts are either helper scripts or scripts to run supplementary analyses and are not part of the main lo-siRF pipeline)
