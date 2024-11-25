@@ -2987,11 +2987,11 @@ if (!params$eval) {
       "mapit_gene_gsea_classic.GseaPreranked.1726843556954",
       "gsea_report_for_na_pos_1726843556954.tsv"
     )
-  ) |>
-  tibble::as_tibble() |>
+  ) %>%
+  tibble::as_tibble() %>%
   dplyr::mutate(
     Rank = 1:dplyr::n()
-  ) |>
+  ) %>%
   dplyr::select(
     Rank,
     Name = NAME,
@@ -3001,10 +3001,10 @@ if (!params$eval) {
     `Nominal p-value` = `NOM p-val`,
     `FDR q-value` = `FDR q-val`,
     `FWER p-value` = `FWER p-val`
-  ) |>
+  ) %>%
   dplyr::filter(
     `Nominal p-value` < 0.05
-  ) |>
+  ) %>%
   vthemes::pretty_DT(
     rownames = FALSE,
     options = list(pageLength = 15, ordering = FALSE)
@@ -3130,36 +3130,36 @@ for (dgp_name in dgp_names) {
     file.path(
       res_dir, "Permutation Validity", dgp_name, "Varying n", "fit_results.rds"
     )
-  ) |> 
+  ) %>% 
     dplyr::mutate(p = num_features)
 }
 
 # calibration plot
 alphas <- seq(0, 1, by = 0.01)
-plt_df <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") |>
-  tidyr::unnest(result) |> 
-  dplyr::group_by(dgp_name, n, p) |>
+plt_df <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") %>%
+  tidyr::unnest(result) %>% 
+  dplyr::group_by(dgp_name, n, p) %>%
   dplyr::summarise(
     alpha = tibble::tibble(
       alpha = alphas,
       reject_prob = purrr::map_dbl(alphas, ~ mean(pval < .x))
-    ) |>
+    ) %>%
       list(),
     .groups = "drop"
-  ) |>
-  tidyr::unnest(alpha) |>
+  ) %>%
+  tidyr::unnest(alpha) %>%
   dplyr::mutate(
     setting = sprintf("Num. Samples = %s\nNum. Features = %s", n, p)
   )
 plt_ls <- list()
 for (dgp_name in null_dgp_names) {
-  plt_ls[[dgp_name]] <- plt_df |>
+  plt_ls[[dgp_name]] <- plt_df %>%
     dplyr::filter(
       dgp_name == !!dgp_name
-    ) |> 
+    ) %>% 
     dplyr::mutate(
       dgp_name = stringr::str_replace(dgp_name, "SNP", "SNV")
-    ) |> 
+    ) %>% 
     ggplot2::ggplot() +
     ggplot2::aes(
       x = alpha, y = reject_prob
@@ -3241,18 +3241,18 @@ left_join_with_na <- function(x, y, by) {
   }
 }
 
-tab <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") |>
+tab <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") %>%
   dplyr::filter(
     stringr::str_detect(.dgp_name, "order")
-  ) |> 
-  dplyr::rowwise() |> 
+  ) %>% 
+  dplyr::rowwise() %>% 
   dplyr::mutate(
     result = list(left_join_with_na(int_df, result, by = "int"))
-  ) |> 
-  dplyr::ungroup() |> 
-  tidyr::unnest(result) |> 
+  ) %>% 
+  dplyr::ungroup() %>% 
+  tidyr::unnest(result) %>% 
   dplyr::mutate(
-    int_vec = stringr::str_remove_all(int, "[[+/-]]") |> 
+    int_vec = stringr::str_remove_all(int, "[[+/-]]") %>% 
       stringr::str_split("_"),
     true_feat = purrr::map2_lgl(
       int_vec, .dgp_name,
@@ -3278,10 +3278,10 @@ tab <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") |>
       }
     ),
     tested_int = !is.na(pval)
-  ) |> 
+  ) %>% 
   dplyr::group_by(
     dgp_name, n, p
-  ) |>
+  ) %>%
   dplyr::summarise(
     `# Candidate Interactions from siRF` = dplyr::n(),
     `Prop. (Num.) of True Interactions in Candidate Set` = 
@@ -3309,19 +3309,19 @@ tab <- dplyr::bind_rows(fit_results_ls, .id = "dgp_name") |>
         sum(!is.na(pval))
       ),
     .groups = "drop"
-  ) |> 
+  ) %>% 
   dplyr::mutate(
     dgp_name = dplyr::case_when(
       dgp_name == "SNP X (order 1)" ~ "Marginal Model",
       dgp_name == "SNP X (order 2)" ~ "Interaction Model"
-    ) |> 
+    ) %>% 
       factor(levels = c("Interaction Model", "Marginal Model"))
-  ) |> 
-  dplyr::arrange(dgp_name) |> 
+  ) %>% 
+  dplyr::arrange(dgp_name) %>% 
   dplyr::rename(
     "Simulation Name" = dgp_name,
     `Num. Samples` = n
-  ) |> 
+  ) %>% 
   dplyr::select(-p)
 subchunkify(
   vthemes::pretty_DT(
