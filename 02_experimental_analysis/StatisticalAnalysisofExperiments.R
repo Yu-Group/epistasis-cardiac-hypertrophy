@@ -3,7 +3,7 @@ library(tidyverse)
 library(doParallel)
 library(quantreg)
 library(WRS2)
-
+library(rsample)
 #-------------------------------------------------------------------------------
 # Function to calculate and return p-values comparing scramble vs knocked down
 # cell size (or other cell measurements)
@@ -66,9 +66,11 @@ SvKD_p_value <- ScramblevsKD(df,batch,flow,outlet,cell_line,gene,quantile,nboot)
 
 
 #-------------------------------------------------------------------------------
-# Function to perform quantile regression testing to test non-additivity
+# Function to perform quantile regression testing to test non-additivity while accounting for batch effects
 # df: dataframe with cell measurements across batches in different experiments
 # (merged based on KD efficiency in manuscript results)
+# note: the batchflow column should specify corresponding batches and their flow rates (ex. 'Batch#2-High')
+# so they can be controlled for
 # cell_line: specify healthy vs disease cell line to test (e273 vs r403q)
 # interaction: the two genes knocked down together (ccdc_igf1r vs ccdc_ttn)
 # quantile: the quantile level for testing in the regression (0.5-0.9)
@@ -97,9 +99,9 @@ NonAdditivity <- function(df,cell_line,interaction,quantile,nboot){
   #----------------------------------------------------------------
   # Run tranditional quantile regression and collect t-test results
   #----------------------------------------------------------------
-  quant_reg <- rq(formula = cell_size ~ gene1*gene2,tau=quantile,data = mod_df)
+  quant_reg <- rq(formula = cell_size ~ gene1*gene2+batchflow,tau=quantile,data = mod_df)
   quant_reg_summary <- summary(quant_reg)
-  p_val_quant_reg <- quant_reg_summary$coefficients[4,4]
+  p_val_quant_reg <- quant_reg_summary$coefficients[5,4]
   p_val_quant_reg <- c(interaction,"quantilereg-t_test",quantile,p_val_quant_reg)
   
   #----------------------------------------------------------------
@@ -107,9 +109,19 @@ NonAdditivity <- function(df,cell_line,interaction,quantile,nboot){
   #----------------------------------------------------------------
   nworkers <- detectCores()
   res_mclapply <- mclapply(1:nboot,function(trial){
-    ind <- sample(nrow(mod_df),nrow(mod_df),replace=TRUE)
-    bootsamp_df <- mod_df[ind,]
-    quant_reg_bootsamp <- rq(formula = cell_size ~ gene1*gene2,tau=quantile,data = bootsamp_df)
+    g1 <- mod_df[mod_df$gene %in% genes[1],]
+    gb1 <- as.data.frame(bootstraps(g1, batchflow, times = 1)$splits[[1]])
+    g2 <- mod_df[mod_df$gene %in% genes[2],]
+    gb2 <- as.data.frame(bootstraps(g2, batchflow, times = 1)$splits[[1]])
+    g12 <- mod_df[mod_df$gene %in% genes[3],]
+    gb12 <- as.data.frame(bootstraps(g12, batchflow, times = 1)$splits[[1]])
+    sc <- mod_df[!(mod_df$gene %in% genes),]
+    scb <- as.data.frame(bootstraps(sc, batchflow, times = 1)$splits[[1]])
+    
+    bootsamp_df <- rbind(
+      gb1, gb2, gb12, scb)
+
+    quant_reg_bootsamp <- rq(formula = cell_size ~ gene1*gene2+batchflow,tau=quantile,data = bootsamp_df)
     broom::tidy(quant_reg_bootsamp)
   },mc.cores=nworkers)
   res_mclapply <- dplyr::bind_rows(res_mclapply)
@@ -117,8 +129,8 @@ NonAdditivity <- function(df,cell_line,interaction,quantile,nboot){
   #----------------------------------------------------------------
   # Compute percentile bootstrap p-values
   #----------------------------------------------------------------
-  b.orig <- quant_reg_summary$coefficients[4,1]
-  t.orig <- quant_reg_summary$coefficients[4,3]
+  b.orig <- quant_reg_summary$coefficients[which(rownames(quant_reg_summary$coefficients) == 'gene1:gene2'),1]
+  t.orig <- quant_reg_summary$coefficients[which(rownames(quant_reg_summary$coefficients) == 'gene1:gene2'),3]
   b.boot <- res_mclapply$estimate[res_mclapply$term=='gene1:gene2']
   stderr.boot <- res_mclapply$std.error[res_mclapply$term=='gene1:gene2']
   t.boot <- (b.boot-b.orig)/stderr.boot
@@ -126,7 +138,7 @@ NonAdditivity <- function(df,cell_line,interaction,quantile,nboot){
   p.lower <- mean(t.boot <= t.orig) 
   p_val_quant_reg_percboot <- 2 * min(p.upper, p.lower)
   p_val_quant_reg_percboot <- c(interaction,"quantilereg-percboot-t_test",quantile,p_val_quant_reg_percboot)
-  
+
   #----------------------------------------------------------------
   # stack and return
   #----------------------------------------------------------------
