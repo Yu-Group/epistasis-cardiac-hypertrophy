@@ -2,7 +2,7 @@
 
 This repository contains code corresponding to:
 
-Wang, Qianru, Tiffany M Tang, Nathan Youlton, Chad S Weldy, Ana M Kenney, Omer Ronen, J Weston Hughes, Elizabeth T Chin, Shirley C Sutton, Abhineet Agarwal, Xiao Li, Merle Behr, Karl Kumbier, Christine S Moravec, WH Wilson Tang, Kenneth B Margulies, Thomas P Cappola, Atul J Butte, Rima Arnaout, James B Brown, James R Priest, Victoria N Parikh, Bin Yu, Euan A Ashley. 2023. “[Epistasis regulates genetic control of cardiac hypertrophy](https://www.medrxiv.org/content/10.1101/2023.11.06.23297858v1).”
+Qianru Wang*, Tiffany M Tang*, Michelle Youlton, Chad S Weldy, Ana M Kenney, Omer Ronen, J Weston Hughes, Elizabeth T Chin, Shirley C Sutton, Abhineet Agarwal, Xiao Li, Merle Behr, Karl Kumbier, Christine S Moravec, WH Wilson Tang, Kenneth B Margulies, Thomas P Cappola, Atul J Butte, Rima Arnaout, James B Brown, James R Priest, Victoria N Parikh, Bin Yu, Euan A Ashley. “[Epistasis regulates genetic control of cardiac hypertrophy](https://www.nature.com/articles/s44161-025-00656-8).” *Nature Cardiovascular Research*. 2025.
 
 In summary, we developed an end-to-end pipeline to demonstrate the role of epistasis in the genetic control of cardiac hypertrophy. This pipeline consisted of four major phases: (1) the derivation of estimates of left ventricular mass via deep learning, (2) the computational prioritization of epistatic drivers based on UK Biobank via the low-signal signed iterative random forest (lo-siRF), (3) functional interpretation of the hypothesized epistatic genetic loci, and (4) experimental confirmation of epistasis in cardiac transcriptome and cardiac cellular morphology.
 
@@ -33,14 +33,12 @@ In summary, we developed an end-to-end pipeline to demonstrate the role of epist
 
 ```r
 @article{
-	wang2023epistasis,
-	author = {Qianru Wang and Tiffany M. Tang and Nathan Youlton and Chad S. Weldy and Ana M. Kenney and Omer Ronen and J. Weston Hughes and Elizabeth T. Chin and Shirley C. Sutton and Abhineet Agarwal and Xiao Li and Merle Behr and Karl Kumbier and Christine S. Moravec and W. H. Wilson Tang and Kenneth B. Margulies and Thomas P. Cappola and Atul J. Butte and Rima A. Arnaout and James B. Brown and James R. Priest and Victoria N. Parikh and Bin Yu and Euan A. Ashley},
+	wang2025epistasis,
+	author = {Qianru Wang and Tiffany M. Tang and Michelle Youlton and Chad S. Weldy and Ana M. Kenney and Omer Ronen and J. Weston Hughes and Elizabeth T. Chin and Shirley C. Sutton and Abhineet Agarwal and Xiao Li and Merle Behr and Karl Kumbier and Christine S. Moravec and W. H. Wilson Tang and Kenneth B. Margulies and Thomas P. Cappola and Atul J. Butte and Rima A. Arnaout and James B. Brown and James R. Priest and Victoria N. Parikh and Bin Yu and Euan A. Ashley},
 	title = {Epistasis regulates genetic control of cardiac hypertrophy},
-	year = {2023},
-	doi = {10.1101/2023.11.06.23297858},
-	publisher = {Cold Spring Harbor Laboratory Press},
-	URL = {https://www.medrxiv.org/content/early/2023/11/09/2023.11.06.23297858},
-	eprint = {https://www.medrxiv.org/content/early/2023/11/09/2023.11.06.23297858.full.pdf},
-	journal = {medRxiv}
+	journal={Nature Cardiovascular Research},
+	pages={1--21},
+	year={2025},
+	publisher={Nature Publishing Group}
 }
 ```
