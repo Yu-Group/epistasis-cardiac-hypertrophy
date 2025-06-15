@@ -1,7 +1,7 @@
 ---
 title: "PCS documentation for low-signal signed iterative random forests (lo-siRF)"
-# author: "Tiffany M. Tang"
-date: "September 27, 2024"
+author: "Qianru Wang$^*$, Tiffany M. Tang$^*$, Michelle Youlton, Chad S. Weldy, Ana M. Kenney, Omer Ronen, J. Weston Hughes, Elizabeth T. Chin, Shirley C. Sutton, Abhineet Agarwal, Xiao Li, Merle Behr, Karl Kumbier, Christine S. Moravec, W. H. Wilson Tang, Kenneth B. Margulies, Thomas P. Cappola, Atul J. Butte, Rima Arnaout, James B. Brown, James R. Priest, Victoria N. Parikh, Bin Yu, Euan A. Ashley"
+date: "June 5, 2025"
 bibliography: bibliography.bib
 header-includes:
     - \usepackage{float}
